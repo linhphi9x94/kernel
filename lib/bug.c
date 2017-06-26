@@ -159,7 +159,7 @@ enum bug_trap_type report_bug(unsigned long bugaddr, struct pt_regs *regs)
 
 #ifdef CONFIG_SEC_DEBUG
 	if(file)
-		sec_debug_store_bug_string("%s:%u!", file, line);
+		sec_debug_store_extra_buf(INFO_BUG, "%s:%u!", file, line);
 #endif
 
 	if (warning) {

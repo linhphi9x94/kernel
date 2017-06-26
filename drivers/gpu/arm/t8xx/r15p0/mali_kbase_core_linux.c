@@ -3315,7 +3315,7 @@ static int power_control_init(struct platform_device *pdev)
 	|| defined(LSK_OPPV2_BACKPORT)
 	err = dev_pm_opp_of_add_table(kbdev->dev);
 #elif (LINUX_VERSION_CODE >= KERNEL_VERSION(3, 7, 0))
-	err = of_init_opp_table(kbdev->dev);
+	
 #else
 	err = 0;
 #endif /* LINUX_VERSION_CODE */

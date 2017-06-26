@@ -1,0 +1,112 @@
+Copying Files ...
+
+Loading configuration ...
+
+Kconfig:15:warning: environment variable ANDROID_MAJOR_VERSION undefined
+arch/arm64/configs/tgpkernel-gracelte_defconfig:1942:warning: override: reassigning to symbol INPUT_WACOM
+arch/arm64/configs/tgpkernel-gracelte_defconfig:1943:warning: override: reassigning to symbol EPEN_WACOM_G5SP
+arch/arm64/configs/tgpkernel-gracelte_defconfig:1944:warning: override: reassigning to symbol EPEN_WACOM_G9PM
+arch/arm64/configs/tgpkernel-gracelte_defconfig:1945:warning: override: reassigning to symbol EPEN_WACOM_G9PL
+arch/arm64/configs/tgpkernel-gracelte_defconfig:1946:warning: override: reassigning to symbol EPEN_WACOM_G9PLL
+arch/arm64/configs/tgpkernel-gracelte_defconfig:1947:warning: override: reassigning to symbol EPEN_WACOM_G10PM
+arch/arm64/configs/tgpkernel-gracelte_defconfig:1948:warning: override: reassigning to symbol EPEN_WACOM_W9012
+arch/arm64/configs/tgpkernel-gracelte_defconfig:1949:warning: override: reassigning to symbol EPEN_WACOM_W9014
+arch/arm64/configs/tgpkernel-gracelte_defconfig:1950:warning: override: reassigning to symbol EPEN_WACOM_W9018
+arch/arm64/configs/tgpkernel-gracelte_defconfig:1951:warning: override: reassigning to symbol WACOM_LCD_FREQ_COMPENSATE
+arch/arm64/configs/tgpkernel-gracelte_defconfig:3983:warning: override: reassigning to symbol SEC_DEBUG_LAST_KMSG
+#
+# configuration written to .config
+#
+
+Compiling zImage ...
+
+Kconfig:15:warning: environment variable ANDROID_MAJOR_VERSION undefined
+INFO: CC is /home/xdavn/gcc/bin/aarch64-cortex_a53-linux-gnueabi-gcc
+In file included from scripts/sortextable.c:192:0:
+scripts/sortextable.h: In function ‘do32’:
+scripts/sortextable.h:107:12: warning: variable ‘sort_done_location’ set but not used [-Wunused-but-set-variable]
+  uint32_t *sort_done_location;
+            ^
+In file included from scripts/sortextable.c:194:0:
+scripts/sortextable.h: In function ‘do64’:
+scripts/sortextable.h:107:12: warning: variable ‘sort_done_location’ set but not used [-Wunused-but-set-variable]
+  uint32_t *sort_done_location;
+            ^
+../kernel/trace/trace_output.c: In function 'trace_graph_ret_raw':
+../kernel/trace/trace_output.c:1020:2: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  if (!trace_seq_printf(&iter->seq, "%lx %lld %lld %ld %d\n",
+  ^~
+../kernel/trace/trace_output.c:1026:3: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+   return TRACE_TYPE_PARTIAL_LINE;
+   ^~~~~~
+../kernel/sched/fair.c: In function 'move_specific_task':
+../kernel/sched/fair.c:9117:2: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  if (throttled_lb_pair(task_group(p), env->src_rq->cpu,
+  ^~
+../kernel/sched/fair.c:9121:3: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+   if (!hmp_can_migrate_task(p, env))
+   ^~
+../mm/slub.c: In function 'setup_object':
+../mm/slub.c:1629:2: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  if (unlikely(s->ctor))
+  ^~
+../mm/slub.c:1631:3: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+   kasan_poison_object_data(s, object);
+   ^~~~~~~~~~~~~~~~~~~~~~~~
+../drivers/base/power/opp/core.c:967:13: warning: '_opp_supported_by_regulators' defined but not used [-Wunused-function]
+ static bool _opp_supported_by_regulators(struct dev_pm_opp *opp,
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../fs/ecryptfs/ecryptfs_dek.c: In function 'ecryptfs_update_crypt_flag':
+../fs/ecryptfs/ecryptfs_dek.c:361:5: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+     if(list_empty(&crypt_stat->keysig_list))
+     ^~
+../fs/ecryptfs/ecryptfs_dek.c:364:2: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+  mutex_lock(&crypt_stat->cs_mutex);
+  ^~~~~~~~~~
+../fs/f2fs/super.c: In function 'sanity_check_raw_super':
+../fs/f2fs/super.c:843:6: error: implicit declaration of function 'sanity_check_area_boundary' [-Werror=implicit-function-declaration]
+  if (sanity_check_area_boundary(sbi, bh))
+      ^~~~~~~~~~~~~~~~~~~~~~~~~~
+../fs/f2fs/super.c:843:33: error: 'sbi' undeclared (first use in this function)
+  if (sanity_check_area_boundary(sbi, bh))
+                                 ^~~
+../fs/f2fs/super.c:843:33: note: each undeclared identifier is reported only once for each function it appears in
+../fs/f2fs/super.c:843:38: error: 'bh' undeclared (first use in this function)
+  if (sanity_check_area_boundary(sbi, bh))
+                                      ^~
+cc1: some warnings being treated as errors
+make[3]: *** [fs/f2fs/super.o] Error 1
+make[2]: *** [fs/f2fs] Error 2
+make[2]: *** Waiting for unfinished jobs....
+../firmware/Makefile:238: target `firmware/cypress/cy8cmbr3145_grace.fw.gen.S' given more than once in the same rule.
+make[1]: *** [fs] Error 2
+make[1]: *** Waiting for unfinished jobs....
+../drivers/cpufreq/cpufreq_ondemand.c:40:0: warning: "MIN_FREQUENCY_UP_THRESHOLD" redefined
+ #define MIN_FREQUENCY_UP_THRESHOLD  (11)
+ 
+../drivers/cpufreq/cpufreq_ondemand.c:30:0: note: this is the location of the previous definition
+  #define MIN_FREQUENCY_UP_THRESHOLD (1)
+ 
+In file included from ../drivers/input/touchscreen/mxt_t/mxtt.c:25:0:
+../include/linux/i2c/mxtt.h:70:0: warning: "TSP_CMD_RESULT_STR_LEN" redefined
+ #define TSP_CMD_RESULT_STR_LEN  512
+ 
+../include/linux/i2c/mxtt.h:68:0: note: this is the location of the previous definition
+ #define TSP_CMD_RESULT_STR_LEN 2000 //512
+ 
+../drivers/input/touchscreen/sec_ts/sec_ts_fn.c: In function 'cmd_store':
+../drivers/input/touchscreen/sec_ts/sec_ts_fn.c:502:4: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+    if (ts->delayed_cmd_param[0] > 1)
+    ^~
+../drivers/input/touchscreen/sec_ts/sec_ts_fn.c:504:5: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+     schedule_delayed_work(&ts->cover_cmd_work, msecs_to_jiffies(10));
+     ^~~~~~~~~~~~~~~~~~~~~
+In file included from ../drivers/muic/universal/muic_ccic.c:44:0:
+../drivers/muic/universal/muic_regmap.h:103:8: error: duplicate member 'get_vbus_value'
+  int (*get_vbus_value)(struct regmap_desc *, int);
+        ^~~~~~~~~~~~~~
+make[3]: *** [drivers/muic/universal/muic_ccic.o] Error 1
+make[2]: *** [drivers/muic] Error 2
+make[2]: *** Waiting for unfinished jobs....
+make[1]: *** [drivers] Error 2
+make: *** [sub-make] Error 2
