@@ -66,6 +66,8 @@
 
 #define TSP_CMD_STR_LEN			32
 #define TSP_CMD_RESULT_STR_LEN	2000	//512
+
+#define TSP_CMD_RESULT_STR_LEN		512
 #define TSP_CMD_PARAM_NUM		8
 
 #define MXT_FIRMWARE_INKERNEL_PATH_NAME	"/sdcard/Firmware/TSP/mxt.fw"

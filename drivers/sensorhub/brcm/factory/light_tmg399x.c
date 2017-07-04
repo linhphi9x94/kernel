@@ -41,7 +41,23 @@ static ssize_t light_vendor_show(struct device *dev,
 static ssize_t light_name_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
-	return sprintf(buf, "%s\n", CHIP_ID);
+	struct ssp_data *data = dev_get_drvdata(dev);
+	int device_id = 0;
+	device_id = get_proximity_device_id(data);
+
+	if(device_id == TMD4903)
+	{
+		return sprintf(buf, "%s\n", "TMD4903");
+	}
+	else if(device_id ==  TMD4904)
+	{
+		return sprintf(buf, "%s\n", "TMD4904");
+	}
+	else
+	{
+		pr_err("[SSP]: %s - Unkown proximity device \n", __func__);
+		return sprintf(buf, "%s\n", "UNKNOWN");
+	}
 }
 
 static ssize_t light_lux_show(struct device *dev,

@@ -129,6 +129,27 @@ typedef union
 	}BITS;
 }U_VDO1_Type;
 
+
+typedef union
+{
+	uint32_t        DATA;
+	struct
+	{
+		uint8_t     BDATA[4];
+	}BYTES;
+	struct
+	{
+		uint32_t    VENDOR_DEFINED_MESSAGE:15,
+					VDM_TYPE:1,
+				    USB_Vendor_ID:16;
+	}BITS;
+}U_UNSTRUCTURED_VDM_HEADER_Type;
+
+typedef struct
+{
+	uint32_t	VDO[6];
+} VDO_MESSAGE_Type;
+
 /* CCIC Dock Observer Callback parameter */
 enum {
 	CCIC_DOCK_DETACHED	= 0,
@@ -142,10 +163,13 @@ enum VDM_MSG_IRQ_State {
 	VDM_DISCOVER_MODES	=	(1 << 2),
 	VDM_ENTER_MODE		=	(1 << 3),
 	VDM_EXIT_MODE 		=	(1 << 4),
+	VDM_ATTENTION		=	(1 << 5),
 };
 
 // VMD Message Register I2C address by S.LSI
 #define REG_VDM_MSG_REQ					0x02C0
+#define REG_SSM_MSG_READ				0x0340
+#define REG_SSM_MSG_SEND				0x0360
 
 #define REG_TX_DIS_ID_RESPONSE			0x0400
 #define REG_TX_DIS_SVID_RESPONSE		0x0420
@@ -162,16 +186,37 @@ enum VDM_MSG_IRQ_State {
 #define REG_RX_EXIT_MODE				0x05A0
 #define REG_RX_DIS_ATTENTION			0x05C0
 
-#define GEAR_VR_DETACH_WAIT_MS 1000
+#define GEAR_VR_DETACH_WAIT_MS 			1000
+
+#define MODE_INT_CLEAR					0x01
+#define PD_NEXT_STATE					0x02
+#define MODE_INTERFACE 					0x03
+#define REQ_PR_SWAP						0x10
+#define REQ_DR_SWAP						0x11
+#define SEL_SSM_MSG_REQ 				0x20
+
+#define SAMSUNG_VENDOR_ID 				0x04E8
+#define GEARVR_PRODUCT_ID				0xA500
+#define DISPLAY_PORT_SVID				0xFF01
 
 void send_alternate_message(void * data, int cmd);
 void receive_alternate_message(void * data, VDM_MSG_IRQ_STATUS_Type *VDM_MSG_IRQ_State);
 int ccic_register_switch_device(int mode);
 void acc_detach_check(struct work_struct *work);
+void send_unstructured_vdm_message(void * data, int cmd);
+void receive_unstructured_vdm_message(void * data, SSM_MSG_IRQ_STATUS_Type *SSM_MSG_IRQ_State);
+void send_role_swap_message(void * data, int cmd);
+void send_attention_message(void * data, int cmd);
+void do_alternate_mode_step_by_step(void * data, int cmd);
 #else
 inline void send_alternate_message(void * data, int cmd) {}
 inline void receive_alternate_message(void * data, VDM_MSG_IRQ_STATUS_Type *VDM_MSG_IRQ_State) {}
-inline int ccic_register_switch_device(int mode) {}
+inline int ccic_register_switch_device(int mode) { return 0; }
 inline void acc_detach_check(struct work_struct *work) {}
+inline void send_unstructured_vdm_message(void * data, int cmd) {}
+inline void receive_unstructured_vdm_message(void * data, SSM_MSG_IRQ_STATUS_Type *SSM_MSG_IRQ_State) {}
+inline void send_role_swap_message(void * data, int cmd) {}
+inline void send_attention_message(void * data, int cmd) {}
+inline void do_alternate_mode_step_by_step(void * data, int cmd) {}
 #endif
 #endif

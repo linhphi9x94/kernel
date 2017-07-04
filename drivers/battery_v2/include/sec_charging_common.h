@@ -44,6 +44,7 @@ enum power_supply_ext_property {
 	POWER_SUPPLY_EXT_PROP_AICL_CURRENT,
 	POWER_SUPPLY_EXT_PROP_CHECK_MULTI_CHARGE,
 	POWER_SUPPLY_EXT_PROP_DESIGNCAP_CORRUPT,
+	POWER_SUPPLY_EXT_PROP_SYSOVLO,
 };
 
 enum sec_battery_voltage_mode {
@@ -131,7 +132,7 @@ enum sec_wireless_control_mode {
 };
 
 enum sec_siop_event_mode {
-	SIOP_EVENT_IDLE = 0,
+	SIOP_EVENT_WPC_DETTACH = 0,
 	SIOP_EVENT_WPC_CALL_START,		/* 5V wireless charging + Call */
 	SIOP_EVENT_WPC_CALL_END,		/* 5V wireless charging + Call */
 	SIOP_EVENT_MAX,					/* end */
@@ -579,6 +580,7 @@ struct sec_battery_platform_data {
 	unsigned int swelling_drop_float_voltage;
 	unsigned int swelling_high_rechg_voltage;
 	unsigned int swelling_low_rechg_voltage;
+	unsigned int swelling_drop_voltage_condition;
 
 #if defined(CONFIG_CALC_TIME_TO_FULL)
 	unsigned int ttf_hv_12v_charge_current;

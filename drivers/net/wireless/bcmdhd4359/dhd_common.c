@@ -24,7 +24,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_common.c 652871 2016-08-04 03:08:32Z $
+ * $Id: dhd_common.c 668603 2016-11-04 04:11:58Z $
  */
 #include <typedefs.h>
 #include <osl.h>
@@ -535,7 +535,7 @@ dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifidx, wl_ioctl_t *ioc, void *buf, int len)
 				int min_len = MIN(ioc->len - slen, sizeof(int));
 				bcopy((msg + slen), &lval, min_len);
 			}
-			DHD_ERROR_EX(("%s: cmd: %d, msg: %s, val: 0x%x, len: %d, set: %d\n",
+			DHD_ERROR_MEM(("%s: cmd: %d, msg: %s, val: 0x%x, len: %d, set: %d\n",
 				ioc->cmd == WLC_GET_VAR ? "WLC_GET_VAR" : "WLC_SET_VAR",
 				ioc->cmd, msg, lval, ioc->len, ioc->set));
 		} else {
@@ -553,10 +553,10 @@ dhd_wl_ioctl(dhd_pub_t *dhd_pub, int ifidx, wl_ioctl_t *ioc, void *buf, int len)
 						break;
 					}
 				}
-				DHD_ERROR_EX(("WLC_IOCTL: cmd: %d, val: %d(%s), len: %d, set: %d\n",
-				ioc->cmd, val, tmp, ioc->len, ioc->set));
+				DHD_ERROR_MEM(("WLC_IOCTL: cmd: %d, val: %d(%s), len: %d, "
+					"set: %d\n", ioc->cmd, val, tmp, ioc->len, ioc->set));
 			} else {
-				DHD_ERROR_EX(("WLC_IOCTL: cmd: %d, buf is NULL\n", ioc->cmd));
+				DHD_ERROR_MEM(("WLC_IOCTL: cmd: %d, buf is NULL\n", ioc->cmd));
 			}
 		}
 #endif /* DHD_LOG_DUMP */
@@ -3899,9 +3899,9 @@ dhd_download_2_dongle(dhd_pub_t	*dhd, char *iovar, uint16 flag, uint16 dload_typ
 }
 
 int
-dhd_download_clm_blob(dhd_pub_t	*dhd, unsigned char *buf, uint32 len)
+dhd_download_clm_blob(dhd_pub_t *dhd, unsigned char *image, uint32 len)
 {
-	int chunk_len, cumulative_len = 0;
+	int chunk_len;
 	int size2alloc;
 	unsigned char *new_buf;
 	int err = 0, data_offset;
@@ -3912,13 +3912,14 @@ dhd_download_clm_blob(dhd_pub_t	*dhd, unsigned char *buf, uint32 len)
 
 	if ((new_buf = (unsigned char *)MALLOCZ(dhd->osh, size2alloc)) != NULL) {
 		do {
-			if (len >= MAX_CHUNK_LEN)
-				chunk_len = MAX_CHUNK_LEN;
-			else
-				chunk_len = len;
-
-			memcpy(new_buf + data_offset, buf + cumulative_len, chunk_len);
-			cumulative_len += chunk_len;
+			chunk_len = dhd_os_get_image_block((char *)(new_buf + data_offset),
+				MAX_CHUNK_LEN, image);
+			if (chunk_len < 0) {
+				DHD_ERROR(("%s: dhd_os_get_image_block failed (%d)\n",
+					__FUNCTION__, chunk_len));
+				err = BCME_ERROR;
+				goto exit;
+			}
 
 			if (len - chunk_len == 0)
 				dl_flag |= DL_END;
@@ -3930,12 +3931,13 @@ dhd_download_clm_blob(dhd_pub_t	*dhd, unsigned char *buf, uint32 len)
 
 			len = len - chunk_len;
 		} while ((len > 0) && (err == 0));
-
-		MFREE(dhd->osh, new_buf, size2alloc);
 	} else {
 		err = BCME_NOMEM;
 	}
-
+exit:
+	if (new_buf) {
+		MFREE(dhd->osh, new_buf, size2alloc);
+	}
 	return err;
 }
 
@@ -3944,7 +3946,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 {
 	char *clm_blob_path;
 	int len;
-	char *memblock = NULL;
+	unsigned char *imgbuf = NULL;
 	int err = BCME_OK;
 	char iovbuf[WLC_IOCTL_SMLEN];
 	wl_country_t *cspec;
@@ -3960,15 +3962,20 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 		clm_blob_path = CONFIG_BCMDHD_CLM_PATH;
 	}
 
-
 	/* If CLM blob file is found on the filesystem, download the file.
 	 * After CLM file download or If the blob file is not present,
 	 * validate the country code before proceeding with the initialization.
 	 * If country code is not valid, fail the initialization.
 	 */
-	len = MAX_CLM_BUF_SIZE;
-	dhd_get_download_buffer(dhd, clm_blob_path, CLM_BLOB, &memblock, &len);
-	if ((len > 0) && (len < MAX_CLM_BUF_SIZE) && memblock) {
+
+	imgbuf = dhd_os_open_image((char *)clm_blob_path);
+	if (imgbuf == NULL) {
+		goto exit;
+	}
+
+	len = dhd_os_get_image_size(imgbuf);
+
+	if ((len > 0) && (len < MAX_CLM_BUF_SIZE) && imgbuf) {
 		bcm_mkiovar("country", NULL, 0, iovbuf, sizeof(iovbuf));
 		err = dhd_wl_ioctl_cmd(dhd, WLC_GET_VAR, iovbuf, sizeof(iovbuf), FALSE, 0);
 		if (err) {
@@ -3985,7 +3992,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 
 		/* Found blob file. Download the file */
 		DHD_TRACE(("clm file download from %s \n", clm_blob_path));
-		err = dhd_download_clm_blob(dhd, memblock, len);
+		err = dhd_download_clm_blob(dhd, imgbuf, len);
 		if (err) {
 			DHD_ERROR(("%s: CLM download failed err=%d\n", __FUNCTION__, err));
 			/* Retrieve clmload_status and print */
@@ -4004,7 +4011,7 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 			DHD_INFO(("%s: CLM download succeeded \n", __FUNCTION__));
 		}
 	} else {
-		DHD_INFO(("Skipping the clm download. len:%d memblk:%p \n", len, memblock));
+		DHD_INFO(("Skipping the clm download. len:%d memblk:%p \n", len, imgbuf));
 #ifdef DHD_USE_CLMINFO_PARSER
 		err = BCME_ERROR;
 		goto exit;
@@ -4027,8 +4034,10 @@ dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path)
 	}
 
 exit:
-	if (memblock)
-		MFREE(dhd->osh, memblock, MAX_CLM_BUF_SIZE);
+
+	if (imgbuf) {
+		dhd_os_close_image(imgbuf);
+	}
 
 	return err;
 }
@@ -4233,9 +4242,10 @@ void dhd_free_download_buffer(dhd_pub_t	*dhd, void *buffer, int length)
 #endif
 	MFREE(dhd->osh, buffer, length);
 }
+
 /* Parse EAPOL 4 way handshake messages */
-void
-dhd_dump_eapol_4way_message(char *ifname, char *dump_data, bool direction)
+int
+dhd_check_eapol_4way_message(char *dump_data)
 {
 	unsigned char type;
 	int pair, ack, mic, kerr, req, sec, install;
@@ -4243,31 +4253,52 @@ dhd_dump_eapol_4way_message(char *ifname, char *dump_data, bool direction)
 	type = dump_data[18];
 	if (type == 2 || type == 254) {
 		us_tmp = (dump_data[19] << 8) | dump_data[20];
-		pair =  0 != (us_tmp & 0x08);
+		pair = 0 != (us_tmp & 0x08);
 		ack = 0  != (us_tmp & 0x80);
 		mic = 0  != (us_tmp & 0x100);
-		kerr =  0 != (us_tmp & 0x400);
+		kerr = 0 != (us_tmp & 0x400);
 		req = 0  != (us_tmp & 0x800);
 		sec = 0  != (us_tmp & 0x200);
-		install  = 0 != (us_tmp & 0x40);
+		install = 0 != (us_tmp & 0x40);
 		if (!sec && !mic && ack && !install && pair && !kerr && !req) {
-			DHD_ERROR(("ETHER_TYPE_802_1X[%s] [%s] : M1 of 4way\n",
-				ifname, direction ? "TX" : "RX"));
+			return EAPOL_4WAY_M1;
 		} else if (pair && !install && !ack && mic && !sec && !kerr && !req) {
-			DHD_ERROR(("ETHER_TYPE_802_1X[%s] [%s] : M2 of 4way\n",
-				ifname, direction ? "TX" : "RX"));
+			return EAPOL_4WAY_M2;
 		} else if (pair && ack && mic && sec && !kerr && !req) {
-			DHD_ERROR(("ETHER_TYPE_802_1X[%s] [%s] : M3 of 4way\n",
-				ifname, direction ? "TX" : "RX"));
+			return EAPOL_4WAY_M3;
 		} else if (pair && !install && !ack && mic && sec && !req && !kerr) {
-			DHD_ERROR(("ETHER_TYPE_802_1X[%s] [%s] : M4 of 4way\n",
-				ifname, direction ? "TX" : "RX"));
+			return EAPOL_4WAY_M4;
 		} else {
-			DHD_ERROR(("ETHER_TYPE_802_1X[%s] [%s]: ver %d, type %d, replay %d\n",
-				ifname, direction ? "TX" : "RX",
-				dump_data[14], dump_data[15], dump_data[30]));
+			return 0;
 		}
-	} else {
+	}
+
+	return 0;
+}
+
+void
+dhd_dump_eapol_4way_message(char *ifname, char *dump_data, bool direction)
+{
+	int msg_type = dhd_check_eapol_4way_message(dump_data);
+
+	switch (msg_type) {
+	case EAPOL_4WAY_M1:
+		DHD_ERROR(("ETHER_TYPE_802_1X[%s] [%s] : M1 of 4way\n",
+			ifname, direction ? "TX" : "RX"));
+		break;
+	case EAPOL_4WAY_M2:
+		DHD_ERROR(("ETHER_TYPE_802_1X[%s] [%s] : M2 of 4way\n",
+			ifname, direction ? "TX" : "RX"));
+		break;
+	case EAPOL_4WAY_M3:
+		DHD_ERROR(("ETHER_TYPE_802_1X[%s] [%s] : M3 of 4way\n",
+			ifname, direction ? "TX" : "RX"));
+		break;
+	case EAPOL_4WAY_M4:
+		DHD_ERROR(("ETHER_TYPE_802_1X[%s] [%s] : M4 of 4way\n",
+			ifname, direction ? "TX" : "RX"));
+		break;
+	default:
 		DHD_ERROR(("ETHER_TYPE_802_1X[%s] [%s]: ver %d, type %d, replay %d\n",
 			ifname, direction ? "TX" : "RX",
 			dump_data[14], dump_data[15], dump_data[30]));

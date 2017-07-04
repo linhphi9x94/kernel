@@ -4639,11 +4639,11 @@ static int arizona_enable_fll(struct arizona_fll *fll)
 
 	if (already_enabled) {
 		/* Facilitate smooth refclk across the transition */
-		regmap_update_bits_async(fll->arizona->regmap, fll->base + 0x9,
-					 ARIZONA_FLL1_GAIN_MASK, 0);
 		regmap_update_bits(fll->arizona->regmap, fll->base + 1,
 				   ARIZONA_FLL1_FREERUN, ARIZONA_FLL1_FREERUN);
 		udelay(32);
+		regmap_update_bits_async(fll->arizona->regmap, fll->base + 0x9,
+					 ARIZONA_FLL1_GAIN_MASK, 0);
 	}
 
 	/*
@@ -5133,6 +5133,17 @@ arizona_get_extcon_info(struct snd_soc_codec *codec)
 	return arizona->extcon_info;
 }
 EXPORT_SYMBOL_GPL(arizona_get_extcon_info);
+
+bool arizona_get_moisture_state(struct snd_soc_codec *codec)
+{
+	struct arizona *arizona = dev_get_drvdata(codec->dev->parent);
+	bool ret = arizona->moisture_detected;
+
+	arizona->moisture_detected = false;
+
+	return ret;
+}
+EXPORT_SYMBOL_GPL(arizona_get_moisture_state);
 
 static int arizona_set_force_bypass(struct snd_soc_codec *codec,
 	bool set_bypass)

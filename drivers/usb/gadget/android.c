@@ -28,12 +28,7 @@
 #include <linux/usb/composite.h>
 #include <linux/usb/gadget.h>
 #include <linux/soc/samsung/exynos-soc.h>
-#ifdef CONFIG_USB_HEROLTE
-#include <linux/usb_notify_hero.h>
-#endif
-#ifdef CONFIG_USB_GRACELTE
-#include <linux/usb_notify_grace.h>
-#endif
+#include <linux/usb_notify.h>
 
 #include "gadget_chips.h"
 
@@ -55,6 +50,9 @@
 #include "../function/f_diag.c"
 #include "../function/f_dm.c"
 #include "../function/u_ether.c"
+#include "../function/f_hid.h"
+#include "../function/f_hid_android_keyboard.c"
+#include "../function/f_hid_android_mouse.c"
 
 
 MODULE_AUTHOR("Mike Lockwood");
@@ -161,6 +159,11 @@ int is_rndis_use(void)
 EXPORT_SYMBOL_GPL(is_rndis_use);
 #endif
 
+#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
+void set_usb_enumeration_state(int state);
+void set_usb_enable_state(void);
+#endif
+
 /* String Table */
 static struct usb_string strings_dev[] = {
 	[STRING_MANUFACTURER_IDX].s = manufacturer_string,
@@ -214,8 +217,18 @@ static void android_work(struct work_struct *data)
 	spin_lock_irqsave(&cdev->lock, flags);
 	if (cdev->config)
 		uevent_envp = configured;
-	else if (dev->connected != dev->sw_connected)
+	else if (dev->connected != dev->sw_connected) {
 		uevent_envp = dev->connected ? connected : disconnected;
+#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
+		if (dev->connected) {
+			if (dev->cdev && (dev->cdev->desc.bcdUSB == 0x310)) {
+				set_usb_enumeration_state(0x310);	// Super-Speed	
+			} else {
+				set_usb_enumeration_state(0x210);	// High-Speed
+			}
+		}
+#endif
+	}
 	dev->sw_connected = dev->connected;
 	spin_unlock_irqrestore(&cdev->lock, flags);
 
@@ -1294,6 +1307,40 @@ static struct android_usb_function midi_function = {
 	.attributes	= midi_function_attributes,
 };
 
+static int hid_function_init(struct android_usb_function *f, struct usb_composite_dev *cdev)
+{
+	return ghid_setup(cdev->gadget, 2);
+}
+
+static void hid_function_cleanup(struct android_usb_function *f)
+{
+	ghid_cleanup();
+}
+
+static int hid_function_bind_config(struct android_usb_function *f, struct usb_configuration *c)
+{
+	int ret;
+	printk(KERN_INFO "hid keyboard\n");
+	ret = hidg_bind_config(c, &ghid_device_android_keyboard, 0);
+	if (ret) {
+		pr_info("%s: hid_function_bind_config keyboard failed: %d\n", __func__, ret);
+		return ret;
+	}
+	printk(KERN_INFO "hid mouse\n");
+	ret = hidg_bind_config(c, &ghid_device_android_mouse, 1);
+	if (ret) {
+		pr_info("%s: hid_function_bind_config mouse failed: %d\n", __func__, ret);
+		return ret;
+	}
+	return 0;
+}
+
+static struct android_usb_function hid_function = {
+	.name		= "hid",
+	.init		= hid_function_init,
+	.cleanup	= hid_function_cleanup,
+	.bind_config	= hid_function_bind_config,
+};
 
 static struct android_usb_function *supported_functions[] = {
 //	&ffs_function,
@@ -1314,6 +1361,7 @@ static struct android_usb_function *supported_functions[] = {
 	&conn_gadget_function,
 #endif
 	&midi_function,
+	&hid_function,
 	NULL
 };
 
@@ -1485,7 +1533,7 @@ functions_store(struct device *pdev, struct device_attribute *attr,
 	b = strim(buf);
 
 #ifdef CONFIG_USB_NOTIFY_PROC_LOG
-	store_usblog_notify(NOTIFY_USBMODE, (void *)b, NULL);
+	store_usblog_notify(NOTIFY_USBMODE_FUNC, (void *)b, NULL);
 #endif
 
 	while (b) {
@@ -1539,6 +1587,11 @@ functions_store(struct device *pdev, struct device_attribute *attr,
 #endif
 	}
 
+	/* Always enable HID gadget function. */
+	err = android_enable_function(dev, "hid");
+	if (err)
+		pr_err("android_usb: Cannot enable hid (%d)", err);
+
 	mutex_unlock(&dev->mutex);
 
 	return size;
@@ -1570,6 +1623,10 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 	printk(KERN_DEBUG "usb: %s enabled=%d, !dev->enabled=%d\n",
 			__func__, enabled, !dev->enabled);
 	if (enabled && !dev->enabled) {
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+	store_usblog_notify(NOTIFY_USBMODE, "enable 1", NULL);
+#endif
+
 #ifdef 	CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 		cdev->next_string_id = composite_string_index;
 #else
@@ -1624,12 +1681,19 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 		}
 		android_enable(dev);
 		dev->enabled = true;
+#ifdef CONFIG_USB_TYPEC_MANAGER_NOTIFIER
+		set_usb_enable_state();
+#endif
 	} else if (!enabled && dev->enabled) {
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 		/* avoid sending a disconnect switch event
 		 * until after we disconnect.
 		 */
 		cdev->mute_switch = true;
+#endif
+
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+		store_usblog_notify(NOTIFY_USBMODE, "enable 0", NULL);
 #endif
 		android_disable(dev);
 		list_for_each_entry(f, &dev->enabled_functions, enabled_list) {
@@ -1638,6 +1702,12 @@ static ssize_t enable_store(struct device *pdev, struct device_attribute *attr,
 		}
 		dev->enabled = false;
 	} else {
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+		if (dev->enabled)
+			store_usblog_notify(NOTIFY_USBMODE, "already 1", NULL);
+		else
+			store_usblog_notify(NOTIFY_USBMODE, "already 0", NULL);
+#endif
 		pr_err("android_usb: already %s\n",
 				dev->enabled ? "enabled" : "disabled");
 	}

@@ -279,7 +279,12 @@ struct dsim_device {
 #ifdef CONFIG_FB_DSU
 	int dsu_xres;
 	int dsu_yres;
+	struct workqueue_struct *dsu_sysfs_wq;
+	struct delayed_work dsu_sysfs_work;
+	unsigned int	dsu_param_offset;
+	unsigned int	dsu_param_value;
 #endif
+	bool req_display_on;
 };
 
 /**
@@ -304,6 +309,7 @@ struct mipi_dsim_lcd_driver {
 #ifdef CONFIG_FB_DSU
 	int (*dsu_cmd)(struct dsim_device *dsim);
 	int (*init)(struct dsim_device *dsim);
+	int (*dsu_sysfs) (struct dsim_device *dsim);
 #endif
 };
 

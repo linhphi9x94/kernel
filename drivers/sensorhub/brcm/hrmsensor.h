@@ -89,6 +89,9 @@ struct hrm_func {
 	int (*set_led_current)(u8 d1, u8 d2, u8 d3, u8 d4);
 	int (*read_data)(struct hrm_output_data *data);
 	int (*get_chipid)(u64 *chip_id);
+	int (*get_part_type)(u16 *part_type);
+	int (*get_i2c_err_cnt)(u32 *err_cnt);
+	int (*get_curr_adc)(u16 *ir_curr, u16 *red_curr, u32 *ir_adc, u32 *red_adc);
 	int (*get_name_chipset)(char *name);
 	int (*get_name_vendor)(char *name);
 	int (*get_threshold)(s32 *threshold);
@@ -97,6 +100,7 @@ struct hrm_func {
 	int (*get_eol_result)(char *result);
 	int (*get_eol_status)(u8 *status);
 	int (*hrm_debug_set)(u8 mode);
+	int (*get_fac_cmd)(char *cmd_result);
 };
 
 struct hrm_device_data {

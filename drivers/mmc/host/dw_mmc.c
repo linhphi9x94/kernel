@@ -1045,6 +1045,91 @@ static const struct dw_mci_dma_ops dw_mci_idmac_ops = {
 };
 #endif /* CONFIG_MMC_DW_IDMAC */
 
+
+static void dw_mci_sfr_save(struct dw_mci *host, unsigned int *sfr_backup)
+{
+	sfr_backup[0] = mci_readl(host, CTRL);
+	sfr_backup[1] = mci_readl(host, PWREN);
+	sfr_backup[2] = mci_readl(host, CLKDIV);
+	sfr_backup[3] = mci_readl(host, CLKSRC);
+	sfr_backup[4] = mci_readl(host, CLKENA);
+	sfr_backup[5] = mci_readl(host, TMOUT);
+	sfr_backup[6] = mci_readl(host, CTYPE);
+	sfr_backup[7] = mci_readl(host, BLKSIZ);
+	sfr_backup[8] = mci_readl(host, BYTCNT);
+	sfr_backup[9] = mci_readl(host, INTMASK);
+	sfr_backup[10] = mci_readl(host, FIFOTH);
+	sfr_backup[11] = mci_readl(host, UHS_REG);
+	sfr_backup[12] = mci_readl(host, BMOD);
+	sfr_backup[13] = mci_readl(host, DBADDRL);
+	sfr_backup[14] = mci_readl(host, DBADDRU);
+	sfr_backup[15] = mci_readl(host, IDINTEN64);
+	sfr_backup[16] = mci_readl(host, CLKSEL);
+	sfr_backup[17] = mci_readl(host, RESP_TAT);
+	sfr_backup[18] = mci_readl(host, FORCE_CLK_STOP);
+	sfr_backup[19] = mci_readl(host, AXI_BURST_LEN);
+	sfr_backup[20] = mci_readl(host, CDTHRCTL);
+	sfr_backup[21] = mci_readl(host, EMMC_DDR_REG);
+	sfr_backup[22] = mci_readl(host, DDR200_ENABLE_SHIFT);
+	sfr_backup[23] = mci_readl(host, DDR200_RDDQS_EN);
+	sfr_backup[24] = mci_readl(host, DDR200_ASYNC_FIFO_CTRL);
+	sfr_backup[25] = mci_readl(host, DDR200_DLINE_CTRL);
+	sfr_backup[26] = mci_readl(host, SHA_CMD_IE);
+	sfr_backup[27] = mci_readl(host, SHA_CMD_IS);
+	sfr_backup[28] = mci_readl(host, CMD);
+}
+
+static void dw_mci_sfr_restore(struct dw_mci *host, unsigned int *sfr_backup)
+{
+	struct dw_mci_slot *slot = host->cur_slot;
+	const struct dw_mci_drv_data *drv_data = host->drv_data;
+
+	dw_mci_update_clock(slot);
+	mci_writel(host, CTRL, sfr_backup[0]);
+	mci_writel(host, PWREN, sfr_backup[1]);
+	mci_writel(host, CLKDIV, sfr_backup[2]);
+	mci_writel(host, CLKSRC, sfr_backup[3]);
+	mci_writel(host, CLKENA, sfr_backup[4]);
+	mci_writel(host, TMOUT, sfr_backup[5]);
+	mci_writel(host, CTYPE, sfr_backup[6]);
+	mci_writel(host, BLKSIZ, sfr_backup[7]);
+	mci_writel(host, BYTCNT, sfr_backup[8]);
+	mci_writel(host, INTMASK, sfr_backup[9]);
+	mci_writel(host, FIFOTH, sfr_backup[10]);
+	mci_writel(host, UHS_REG, sfr_backup[11]);
+	mci_writel(host, BMOD, sfr_backup[12]);
+	mci_writel(host, DBADDRL, sfr_backup[13]);
+	mci_writel(host, DBADDRU, sfr_backup[14]);
+	mci_writel(host, IDINTEN64, sfr_backup[15]);
+	mci_writel(host, CLKSEL, sfr_backup[16]);
+	mci_writel(host, RESP_TAT, sfr_backup[17]);
+	mci_writel(host, FORCE_CLK_STOP, sfr_backup[18]);
+	mci_writel(host, AXI_BURST_LEN, sfr_backup[19]);
+	mci_writel(host, CDTHRCTL, sfr_backup[20]);
+	mci_writel(host, EMMC_DDR_REG, sfr_backup[21]);
+	mci_writel(host, DDR200_ENABLE_SHIFT, sfr_backup[22]);
+	mci_writel(host, DDR200_RDDQS_EN, sfr_backup[23]);
+	mci_writel(host, DDR200_ASYNC_FIFO_CTRL, sfr_backup[24]);
+	mci_writel(host, DDR200_DLINE_CTRL, sfr_backup[25]);
+	mci_writel(host, SHA_CMD_IE, sfr_backup[26]);
+	mci_writel(host, SHA_CMD_IS, sfr_backup[27]);
+	mci_writel(host, CMD, sfr_backup[28]);
+	if (drv_data && drv_data->cfg_smu)
+		drv_data->cfg_smu(host);
+}
+
+static void dw_mci_force_reset(struct dw_mci *host)
+{
+	unsigned int sfr_backup[30] = {0,};
+
+	dw_mci_sfr_save(host, sfr_backup);
+	mci_writel(host, AXI_BURST_LEN, FORCE_SWRESET);
+	dw_mci_sfr_restore(host, sfr_backup);
+	dw_mci_idma_reset_dma(host);
+	dw_mci_fifo_reset(host->dev, host);
+	dw_mci_ciu_reset(host->dev, host);
+}
+
 static int dw_mci_pre_dma_transfer(struct dw_mci *host,
 				   struct mmc_data *data,
 				   bool next)
@@ -1515,6 +1600,11 @@ static void __dw_mci_start_request(struct dw_mci *host,
 
 	data = cmd->data;
 	if (data) {
+		if (host->quirks & DW_MCI_SW_TRANS) {
+			if (mci_readl(host, MPSTAT) & 0x1)
+				dw_mci_force_reset(host);
+		}
+
 		dw_mci_set_timeout(host, dw_mci_calc_timeout(host));
 		mci_writel(host, BYTCNT, data->blksz*data->blocks);
 		mci_writel(host, BLKSIZ, data->blksz);
@@ -2060,10 +2150,6 @@ static int dw_mci_command_complete(struct dw_mci *host, struct mmc_command *cmd)
 					cmd->opcode, cmd->error, status);
 		}
 
-		ST_LOG("%s: CMD command %d : %d, status = %#x\n",
-			mmc_hostname(host->cur_slot->mmc),
-			cmd->opcode, cmd->error, status);
-
 		/* newer ip versions need a delay between retries */
 		if (host->quirks & DW_MCI_QUIRK_RETRY_DELAY)
 			mdelay(20);
@@ -2079,6 +2165,7 @@ static int dw_mci_data_complete(struct dw_mci *host, struct mmc_data *data)
 	if (status & DW_MCI_DATA_ERROR_FLAGS) {
 		if (status & SDMMC_INT_DRTO) {
 			data->error = -ETIMEDOUT;
+			dev_info(host->dev, "DRTO check TMOUT count 0x%08x\n", mci_readl(host, TMOUT));
 		} else if (status & SDMMC_INT_DCRC) {
 			data->error = -EILSEQ;
 		} else if (status & SDMMC_INT_EBE) {
@@ -2162,10 +2249,10 @@ static void dw_mci_tasklet_func(unsigned long priv)
 			}
 
 			if (cmd->data && err) {
-				send_stop_abort(host, data);
-				dw_mci_stop_dma(host);
-				state = STATE_SENDING_STOP;
 				dw_mci_fifo_reset(host->dev, host);
+				dw_mci_stop_dma(host);
+				send_stop_abort(host, data);
+				state = STATE_SENDING_STOP;
 				dw_mci_debug_req_log(host,
 						host->mrq,
 						STATE_REQ_CMD_PROCESS, state);
@@ -2195,9 +2282,9 @@ static void dw_mci_tasklet_func(unsigned long priv)
 			 */
 			if (test_and_clear_bit(EVENT_DATA_ERROR,
 					       &host->pending_events)) {
-				send_stop_abort(host, data);
-				dw_mci_stop_dma(host);
 				dw_mci_fifo_reset(host->dev, host);
+				dw_mci_stop_dma(host);
+				send_stop_abort(host, data);
 				state = STATE_DATA_ERROR;
 				dw_mci_debug_req_log(host,
 						host->mrq,
@@ -2226,9 +2313,9 @@ static void dw_mci_tasklet_func(unsigned long priv)
 			 */
 			if (test_and_clear_bit(EVENT_DATA_ERROR,
 					       &host->pending_events)) {
-				send_stop_abort(host, data);
-				dw_mci_stop_dma(host);
 				dw_mci_fifo_reset(host->dev, host);
+				dw_mci_stop_dma(host);
+				send_stop_abort(host, data);
 				state = STATE_DATA_ERROR;
 				dw_mci_debug_req_log(host, host->mrq,
 						STATE_REQ_DATA_PROCESS, state);
@@ -2896,6 +2983,13 @@ static void dw_mci_timeout_timer(unsigned long data)
 	if (host && host->mrq) {
 		mrq = host->mrq;
 
+		if (!(mrq->cmd->opcode == MMC_SEND_TUNING_BLOCK ||
+				mrq->cmd->opcode == MMC_SEND_TUNING_BLOCK_HS200)) {
+			dev_err(host->dev,
+					"Timeout waiting for hardware interrupt."
+					" state = %d\n", host->state);
+			dw_mci_reg_dump(host);
+		}
 		spin_lock(&host->lock);
 
 		host->sg = NULL;
@@ -3166,6 +3260,7 @@ static int dw_mci_init_slot(struct dw_mci *host, unsigned int id)
 
 	if (host->dev->of_node) {
 		ctrl_id = of_alias_get_id(host->dev->of_node, "mshc");
+		host->channel = ctrl_id;
 		if (ctrl_id < 0)
 			ctrl_id = 0;
 	} else {
@@ -3425,6 +3520,9 @@ static struct dw_mci_of_quirks {
 	}, {
 		.quirk  = "enable-ulp-mode",
 		.id	= DW_MCI_QUIRK_ENABLE_ULP,
+	}, {
+		.quirk  = "switch_transfer",
+		.id	= DW_MCI_SW_TRANS,
 	},
 };
 
@@ -3509,6 +3607,8 @@ static struct dw_mci_board *dw_mci_parse_dt(struct dw_mci *host)
 	if (of_find_property(np, "card-detect-gpio", NULL)) {
 		pdata->cd_type = DW_MCI_CD_GPIO;
 		pdata->caps2 |= MMC_CAP2_DETECT_ON_ERR;
+		/* to remove power on period without tray, default enable */
+		pdata->caps2 |= MMC_CAP2_NO_PRESCAN_POWERUP;
 	}
 
 	return pdata;

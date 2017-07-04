@@ -490,6 +490,8 @@ extern struct regmap *arizona_get_regmap_dsp(struct snd_soc_codec *codec);
 extern struct arizona_extcon_info *
 arizona_get_extcon_info(struct snd_soc_codec *codec);
 
+extern bool arizona_get_moisture_state(struct snd_soc_codec *codec);
+
 extern int arizona_enable_force_bypass(struct snd_soc_codec *codec);
 extern int arizona_disable_force_bypass(struct snd_soc_codec *codec);
 

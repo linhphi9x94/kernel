@@ -43,7 +43,6 @@
 #ifdef CONFIG_USB_NOTIFY_LAYER
 #include <linux/usb_notify.h>
 #endif
-
 #include "version.h"
 #include "smscusbnet.h"
 #include "smsc9500.h"
@@ -3342,7 +3341,7 @@ static int smsc9500_bind(struct usbnet *dev, struct usb_interface *intf)
 #ifdef CONFIG_USB_NOTIFY_LAYER
 	register_ovc_func(o_notify, smsc9500_ovc_gpio_check, dev);
 	send_otg_notify(o_notify, NOTIFY_EVENT_SMSC_OVC, 1);
-#endif
+#endif	
 
 	SMSC_TRACE(DBG_INIT,"<--------out of bind, return 0\n");
 	return 0;

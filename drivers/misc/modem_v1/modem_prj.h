@@ -519,6 +519,7 @@ struct modem_shared {
 
 	/* list of activated ndev */
 	struct list_head activated_ndev_list;
+	spinlock_t active_list_lock;
 
 	/* Array of pointers to IO devices corresponding to ch[n] */
 	struct io_device *ch2iod[256];

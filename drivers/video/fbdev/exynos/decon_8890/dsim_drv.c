@@ -545,8 +545,9 @@ int dsim_read_data(struct dsim_device *dsim, u32 data_id,
 		case MIPI_DSI_RX_GENERIC_SHORT_READ_RESPONSE_1BYTE:
 		case MIPI_DSI_RX_GENERIC_SHORT_READ_RESPONSE_2BYTE:
 			dev_dbg(dsim->dev, "Short Packet was received from LCD module.\n");
-			for (i = 0; i <= count; i++)
+			for (i = 0; i < count; i++)
 				buf[i] = (rx_fifo >> (8 + i * 8)) & 0xff;
+			rx_size = count;
 			break;
 		case MIPI_DSI_RX_DCS_LONG_READ_RESPONSE:
 		case MIPI_DSI_RX_GENERIC_LONG_READ_RESPONSE:
@@ -1021,6 +1022,8 @@ int dsim_set_panel_power(struct dsim_device *dsim, bool on)
 
 static int dsim_enable(struct dsim_device *dsim)
 {
+	struct decon_device *decon = (struct decon_device *)dsim->decon;
+
 	pr_info("%s ++\n", __func__);
 	if (dsim->state == DSIM_STATE_HSCLKEN) {
 #ifdef CONFIG_LCD_DOZE_MODE
@@ -1087,9 +1090,11 @@ static int dsim_enable(struct dsim_device *dsim)
 		call_panel_ops(dsim, exitalpm, dsim);
 	} else {
 		call_panel_ops(dsim, displayon, dsim);
+		decon->req_display_on = 1;
 	}
 #else
 	call_panel_ops(dsim, displayon, dsim);
+	decon->req_display_on = 1;
 #endif
 
 exit_dsim_enable:
@@ -1506,6 +1511,7 @@ static long dsim_ioctl(struct v4l2_subdev *sd, unsigned int cmd, void *arg)
 
 	case DSIM_IOC_REG_LOCK:
 	{
+		/* In case of HF4 DDI, changing resolution command need to lock DDI register. */
 		if( (bool) arg ) { // LOCK
 			pr_info( "%s (DSU) send LCD_SEQ_DDI_LOCK(%d)\n", __func__, (int)((unsigned long)arg) );
 			dsim_write_hl_data(dsim, LCD_SEQ_DDI_LOCK, ARRAY_SIZE(LCD_SEQ_DDI_LOCK));

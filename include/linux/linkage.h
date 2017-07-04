@@ -83,7 +83,6 @@
 #define ENTRY(name) \
 	.globl name ASM_NL \
 	nop;  \
-	nop;  \
 	ALIGN ASM_NL \
 	name:
 #else

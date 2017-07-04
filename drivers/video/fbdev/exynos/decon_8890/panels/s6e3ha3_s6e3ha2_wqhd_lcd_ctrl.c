@@ -2952,7 +2952,7 @@ exit_err:
 }
 
 #if defined(CONFIG_FB_DSU) || defined(CONFIG_LCD_RES)
-#define CONFIG_HA3_CASET_PASET_CHECK
+#undef CONFIG_HA3_CASET_PASET_CHECK
 static int _s6e3ha3_wqhd_dsu_command(struct dsim_device *dsim, int xres, int yres )
 {
 	int ret = 0;
@@ -3043,11 +3043,6 @@ static int _s6e3ha3_wqhd_dsu_command(struct dsim_device *dsim, int xres, int yre
 	}
 
 
-	ret = dsim_write_hl_data(dsim, SEQ_HA3_CASET_PASET_GPARAM, ARRAY_SIZE(SEQ_HA3_CASET_PASET_GPARAM));
-	if (ret < 0) {
-		dsim_err("%s : fail to write CMD : SEQ_HA3_CASET_PASET_GPARAM\n", __func__);
-	}
-
 #ifdef CONFIG_HA3_CASET_PASET_CHECK
 	ret = dsim_write_hl_data(dsim, SEQ_HA3_CASET_PASET_GPARAM, ARRAY_SIZE(SEQ_HA3_CASET_PASET_GPARAM));
 	ret = dsim_read_hl_data(dsim, REG_HA3_CASET_PASET, size_ha3_caset_paset, buffer_caset_paset);
@@ -3104,24 +3099,6 @@ static int s6e3ha3_wqhd_init(struct dsim_device *dsim)
 	msleep(5);
 
 	/* 9. Interface Setting */
-
-#ifdef CONFIG_FB_DSU
-	ret = dsim_write_hl_data(dsim, SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0));
-	if (ret < 0) {
-		dsim_err("%s : fail to write CMD : SEQ_TEST_KEY_ON_F0\n", __func__);
-	}
-
-	ret = dsim_write_hl_data(dsim, S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_00, ARRAY_SIZE(S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_00));
-	if (ret < 0) {
-		dsim_err("%s : fail to write CMD : S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_00\n", __func__);
-	}
-
-	ret = dsim_write_hl_data(dsim, S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_01, ARRAY_SIZE(S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_01));
-	if (ret < 0) {
-		dsim_err("%s : fail to write CMD : S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_01\n", __func__);
-	}
-#endif
-
 	ret = dsim_write_hl_data(dsim, S6E3HA3_SEQ_4LANE_MIC, ARRAY_SIZE(S6E3HA3_SEQ_4LANE_MIC));
 		if (ret < 0) {
 		dsim_err("%s : fail to write CMD : S6E3HA3_SEQ_MIC\n", __func__);
@@ -3401,18 +3378,6 @@ static int s6e3ha3_wqhd_enteralpm(struct dsim_device *dsim)
 		dsim_err("%s : fail to write CMD : SEQ_TEST_KEY_ON_FC\n", __func__);
 	}
 
-#ifdef CONFIG_FB_DSU
-	ret = dsim_write_hl_data(dsim, S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_00, ARRAY_SIZE(S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_00));
-	if (ret < 0) {
-		dsim_err("%s : fail to write CMD : S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_00\n", __func__);
-	}
-
-	ret = dsim_write_hl_data(dsim, S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_ORI_01, ARRAY_SIZE(S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_ORI_01));
-	if (ret < 0) {
-		dsim_err("%s : fail to write CMD : S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_ORI_01\n", __func__);
-	}
-#endif
-
 	ret = dsim_write_hl_data(dsim, SEQ_DISPLAY_OFF, ARRAY_SIZE(SEQ_DISPLAY_OFF));
 	if (ret < 0) {
 		dsim_err("%s : fail to write CMD : SEQ_DISPLAY_OFF\n", __func__);
@@ -3460,18 +3425,6 @@ static int s6e3ha3_wqhd_exitalpm(struct dsim_device *dsim)
 	if (ret < 0) {
 		dsim_err("%s : fail to write CMD : SEQ_TEST_KEY_ON_FC\n", __func__);
 	}
-
-#ifdef CONFIG_FB_DSU
-	ret = dsim_write_hl_data(dsim, S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_00, ARRAY_SIZE(S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_00));
-	if (ret < 0) {
-		dsim_err("%s : fail to write CMD : S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_00\n", __func__);
-	}
-
-	ret = dsim_write_hl_data(dsim, S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_01, ARRAY_SIZE(S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_01));
-	if (ret < 0) {
-		dsim_err("%s : fail to write CMD : S6E3HA3_SEQ_DDI_SCALER_UPDATE_TIMMING_01\n", __func__);
-	}
-#endif
 
 	ret = dsim_write_hl_data(dsim, SEQ_NORMAL_MODE_ON, ARRAY_SIZE(SEQ_NORMAL_MODE_ON));
 	if (ret < 0) {

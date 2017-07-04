@@ -360,8 +360,9 @@ static void muic_handle_detach(muic_data_t *pmuic)
 
 	ret = com_to_open_with_vbus(pmuic);
 
-	//Fixme.
-	//muic_enable_accdet(pmuic);
+	enable_chgdet(pmuic, 1);
+	if (get_adc_scan_mode(pmuic) != ADC_SCANMODE_ONESHOT)
+		set_adc_scan_mode(pmuic, ADC_SCANMODE_ONESHOT);
 
 #if defined(CONFIG_MUIC_HV)
 	hv_do_detach(pmuic->phv);

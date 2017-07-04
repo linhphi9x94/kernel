@@ -5,4 +5,5 @@ obj-$(CONFIG_PANEL_S6E3FA2_FHD) += s6e3fa2_fhd_lcd_ctrl.o dimming_core.o dsim_ba
 obj-$(CONFIG_PANEL_S6E3HF4_WQHD) += s6e3ha3_s6e3ha2_wqhd_lcd_ctrl.o dimming_core_hero.o dsim_backlight_dynamic.o
 obj-$(CONFIG_PANEL_S6E3HA3_DYNAMIC) += s6e3ha3_s6e3ha2_wqhd_lcd_ctrl.o dimming_core.o dsim_backlight_dynamic.o
 obj-$(CONFIG_PANEL_S6E3HA5_WQHD) += s6e3hf4_s6e3ha5_wqhd_lcd_ctrl.o dimming_core_hero.o dsim_backlight_grace.o
+obj-$(CONFIG_PANEL_S6E3HF2_WQXGA) += s6e3hf2_wqxga_lcd_ctrl.o dimming_core.o dsim_backlight_u.o
 obj-$(CONFIG_PANEL_DDI_SPI) += ddi_spi.o

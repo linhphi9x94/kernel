@@ -72,12 +72,6 @@ typedef enum {
 } manager_notify_t;
 
 typedef enum {
-	USB_CON = 'C',
-	USB_DIS = 'D',
-} usb_state_t;
-
-
-typedef enum {
 	PD_USB_TYPE,
 	PD_TA_TYPE,
 } pd_usb_state_t;
@@ -95,7 +89,8 @@ typedef struct
 
 typedef struct _manager_data_t
 {
-	struct blocking_notifier_head manager_notifier;
+	struct blocking_notifier_head manager_muic_notifier;
+	struct blocking_notifier_head manager_ccic_notifier;
 	struct notifier_block ccic_nb;
 	struct notifier_block muic_nb;
 //	struct notifier_block usb_nb;
@@ -116,13 +111,19 @@ typedef struct _manager_data_t
 
 	int ccic_attach_state;	// USB_STATUS_NOTIFY_DETACH, UFP, DFP, DRP, NO_USB
 	int ccic_drp_state;
+	int ccic_rid_state;
 	int cable_type;
-	unsigned char usb_state[15];
-	int is_usb;
+	int usb_enum_state;
+	bool usb_enable_state;
 	int pd_con_state;
 	int water_det;
 	int is_UFPS;
 	void *pd;
+
+	int water_count;
+	int dry_count;
+	int usb210_count;
+	int usb310_count;
 }manager_data_t;
 
 

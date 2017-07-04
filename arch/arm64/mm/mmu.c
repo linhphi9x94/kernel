@@ -624,6 +624,22 @@ static void __init map_mem(void)
 
 #ifdef CONFIG_TIMA_RKP
 	vmm_extra_mem = early_alloc(0x600000);
+	if ((u64) _text & (~PMD_MASK)) {
+		start = (phys_addr_t) __pa(_text) & PMD_MASK;
+		end = (phys_addr_t) __pa(_text);
+		create_mapping(start, __phys_to_virt(start), end - start);
+		start = (phys_addr_t) __pa(_text);
+		end = (phys_addr_t) ALIGN(__pa(_text), PMD_SIZE);
+		create_mapping(start, __phys_to_virt(start), end - start);
+	}
+	if ((u64) _etext & (~PMD_MASK)) {
+		start = (phys_addr_t) __pa(_etext) & PMD_MASK;
+		end = (phys_addr_t) __pa(_etext);
+		create_mapping(start, __phys_to_virt(start), end - start);
+		start = (phys_addr_t) __pa(_etext);
+		end = (phys_addr_t) ALIGN(__pa(_etext), PMD_SIZE);
+		create_mapping(start, __phys_to_virt(start), end - start);
+	}
 #endif
 	/* Limit no longer required. */
 	memblock_set_current_limit(MEMBLOCK_ALLOC_ANYWHERE);

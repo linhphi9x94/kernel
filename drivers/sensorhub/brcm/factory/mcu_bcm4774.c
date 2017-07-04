@@ -63,7 +63,9 @@ ssize_t mcu_reset_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct ssp_data *data = dev_get_drvdata(dev);
-
+	
+	data->intendedMcuReset = true;
+	
 	reset_mcu(data);
 
 	return sprintf(buf, "OK\n");

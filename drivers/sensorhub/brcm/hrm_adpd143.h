@@ -12,6 +12,9 @@ int adpd_get_current(u8 *d1, u8 *d2, u8 *d3, u8 *d4);
 int adpd_set_current(u8 d1, u8 d2, u8 d3, u8 d4);
 int adpd_read_data(struct hrm_output_data *data);
 int adpd_get_chipid(u64 *chip_id);
+int adpd_get_part_type(u16 *part_type);
+int adpd_get_i2c_err_cnt(u32 *err_cnt);
+int adpd_get_curr_adc(u16 *ir_curr, u16 *red_curr, u32 *ir_adc, u32 *red_adc);
 int adpd_get_name_chipset(char *name);
 int adpd_get_name_vendor(char *name);
 int adpd_get_threshold(s32 *threshold);
@@ -20,5 +23,6 @@ int adpd_set_eol_enable(u8 enable);
 int adpd_get_eol_result(char *result);
 int adpd_get_eol_status(u8 *status);
 int adpd_debug_set(u8 mode);
+int adpd_get_fac_cmd(char *cmd_result);
 
 #endif /* _HRM_ADPD143_H_ */

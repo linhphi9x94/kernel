@@ -30,6 +30,8 @@
 #include "mdnie.h"
 #endif
 
+extern struct kset *devices_kset;
+
 #if defined(CONFIG_EXYNOS_DECON_LCD_MCD)
 static struct lcd_seq_info SEQ_MCD_ON_SET[] = {
 	{(u8 *)SEQ_MCD_ON_SET1, ARRAY_SIZE(SEQ_MCD_ON_SET1), 0},
@@ -864,6 +866,19 @@ static ssize_t window_type_show(struct device *dev,
 	return strlen(buf);
 }
 
+static ssize_t SVC_OCTA_show(struct device *dev,
+	struct device_attribute *attr, char *buf)
+{
+	struct panel_private *priv = dev_get_drvdata(dev);
+
+	sprintf(buf, "%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X%02X\n",
+		priv->date[0] , priv->date[1], priv->date[2], priv->date[3], priv->date[4],
+		priv->date[5],priv->date[6], (priv->coordinate[0] &0xFF00)>>8,priv->coordinate[0] &0x00FF,
+		(priv->coordinate[1]&0xFF00)>>8,priv->coordinate[1]&0x00FF);
+
+	return strlen(buf);
+}
+
 static ssize_t brightness_table_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
@@ -1459,30 +1474,16 @@ static DEVICE_ATTR(read_copr, 0444, read_copr_show, NULL);
 
 
 #ifdef CONFIG_FB_DSU
-enum {
-	DSU_CONFIG_WQHD = 0,
-	DSU_CONFIG_FHD,
-	DSU_CONFIG_HD,
-	DSU_CONFIG_MAX
-};
-
-typedef struct {
-	char* id_str;
-	int	value;
-} type_dsu_config;
-
-unsigned int	dsu_param_offset = 0;
-unsigned int	dsu_param_value = 0;
-
-type_dsu_config dsu_config[] = { {"WQHD", DSU_CONFIG_WQHD}, {"FHD", DSU_CONFIG_FHD}, {"HD", DSU_CONFIG_HD} };
-
 static ssize_t resolution_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	int i;
+	struct dsim_device *dsim;
+	struct panel_private *priv = dev_get_drvdata(dev);
 
+	dsim = container_of(priv, struct dsim_device, priv);
 	for( i=0; i<ARRAY_SIZE(dsu_config); i++ ) {
-		if( dsu_config[i].value == dsu_param_value ) {
+		if( dsu_config[i].value == dsim->dsu_param_value ) {
 			strcpy( buf, dsu_config[i].id_str );
 			pr_info( "%s:%s,%d\n", __func__, dsu_config[i].id_str, dsu_config[i].value );
 			return strlen(buf);
@@ -1504,14 +1505,15 @@ static ssize_t resolution_store(struct device *dev,
 	int i;
 
 	dsim = container_of(priv, struct dsim_device, priv);
-	if( dsu_param_offset==0 ) {
+	if( dsim->dsu_param_offset==0 ) {
 		pr_err( "%s: failed. offset not exist\n", __func__ );
 	}
 
 	for( i=0; i<ARRAY_SIZE(dsu_config); i++ ) {
 		if( !strncmp(dsu_config[i].id_str, buf, strlen(dsu_config[i].id_str)) ) {
-			ret = sec_set_param((unsigned long) dsu_param_offset, dsu_config[i].value);
-			pr_info( "%s:%s,%d,%d\n", __func__, dsu_config[i].id_str, dsu_config[i].value, ret );
+			dsim->dsu_param_value = dsu_config[i].value;
+			ret = sec_set_param((unsigned long) dsim->dsu_param_offset, dsim->dsu_param_value);
+			pr_info( "%s:%s,%d,%d\n", __func__, dsu_config[i].id_str, dsim->dsu_param_value, ret );
 			return size;
 		}
 	}
@@ -1586,7 +1588,9 @@ static ssize_t adaptive_control_store(struct device *dev,
 
 	if (priv->adaptive_control != value) {
 		dev_info(dev, "%s: %d, %d\n", __func__, priv->adaptive_control, value);
+		mutex_lock(&priv->lock);
 		priv->adaptive_control = value;
+		mutex_unlock(&priv->lock);
 		dsim_panel_set_brightness(dsim, 1);
 
 	}
@@ -1597,6 +1601,7 @@ static ssize_t adaptive_control_store(struct device *dev,
 static DEVICE_ATTR(adaptive_control, 0664, adaptive_control_show, adaptive_control_store);
 static DEVICE_ATTR(lcd_type, 0444, lcd_type_show, NULL);
 static DEVICE_ATTR(window_type, 0444, window_type_show, NULL);
+static DEVICE_ATTR(SVC_OCTA, 0444, SVC_OCTA_show, NULL);
 static DEVICE_ATTR(manufacture_code, 0444, manufacture_code_show, NULL);
 static DEVICE_ATTR(cell_id, 0444, cell_id_show, NULL);
 static DEVICE_ATTR(brightness_table, 0444, brightness_table_show, NULL);
@@ -1609,6 +1614,8 @@ static DEVICE_ATTR(read_mtp, 0664, read_mtp_show, read_mtp_store);
 void lcd_init_sysfs(struct dsim_device *dsim)
 {
 	int ret = -1;
+	struct kernfs_node* SVC_sd;
+	struct kobject* SVC;
 
 	ret = device_create_file(&dsim->lcd->dev, &dev_attr_lcd_type);
 	if (ret < 0)
@@ -1721,28 +1728,32 @@ void lcd_init_sysfs(struct dsim_device *dsim)
 	if (ret < 0)
 		dev_err(&dsim->lcd->dev, "failed to add sysfs entries, %d\n", __LINE__);
 #endif
+
+	ret = device_create_file(&dsim->lcd->dev, &dev_attr_SVC_OCTA);
+	if (ret < 0)
+		dev_err(&dsim->lcd->dev, "failed to add sysfs entries, %d\n", __LINE__);
+
+	/* to /sys/devices/svc/ */
+	SVC_sd = sysfs_get_dirent(devices_kset->kobj.sd, "svc");
+	if(IS_ERR_OR_NULL(SVC_sd)) {
+		SVC = kobject_create_and_add("svc", &devices_kset->kobj);
+		if(IS_ERR_OR_NULL(SVC))
+			dsim_err("failed to create /sys/devices/svc already exist svc : 0x%p\n", SVC);
+		else
+			dsim_err("success to create /sys/devices/svc svc : 0x%p\n", SVC);
+	} else {
+		SVC = (struct kobject*)SVC_sd->priv;
+		dsim_info("success to find svc_sd : 0x%p  svc : 0x%p\n", SVC_sd, SVC);
+	}
+
+	if(!IS_ERR_OR_NULL(SVC)) {
+		ret = sysfs_create_link(SVC, &dsim->lcd->dev.kobj, "OCTA");
+		if(ret)
+			dsim_err("failed to create svc/OCTA/ \n");
+		else
+			dsim_info("success to create svc/OCTA/ \n");
+	} else {
+		dsim_err("failed to find svc kobject\n");
+	}
 }
-
-#ifdef CONFIG_FB_DSU
-static int __init get_dsu_config(char *arg)
-{
-	int ret;
-
-	ret = get_option(&arg, (unsigned int*) &dsu_param_offset);
-	if( ret != 2 ) goto err_get_dsu_config;
-
-	ret = get_option(&arg, (unsigned int*) &dsu_param_value);
-	if( ret != 1 ) goto err_get_dsu_config;
-
-	pr_info( "%s:%u, %X\n", __func__, dsu_param_value, dsu_param_offset );
-	return 0;
-
-err_get_dsu_config:
-	pr_err( "%s : option fail(%s,%d)\n", __func__, arg, ret );
-	dsu_param_offset = 0;
-	dsu_param_value = 0;
-	return -EINVAL;
-}
-early_param("lcdres_offset", get_dsu_config);
-#endif
 

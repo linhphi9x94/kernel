@@ -27,7 +27,7 @@
  * other than the GPL, without Broadcom's express prior written consent.
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: wlioctl.h 651466 2016-07-27 05:11:50Z $
+ * $Id: wlioctl.h 674982 2016-12-13 13:47:26Z $
  */
 
 #ifndef _wlioctl_h_
@@ -3929,6 +3929,7 @@ typedef struct wl_tcp_keep_set {
 			OFFSETOF(wl_pkt_filter_pattern_listel_t, mask_and_data)
 
 #define WL_APF_INTERNAL_VERSION 1
+#define WL_APF_PROGRAM_MAX_SIZE (2 * 1024)
 #define WL_APF_PROGRAM_FIXED_LEN	OFFSETOF(wl_apf_program_t, instrs)
 #define WL_APF_PROGRAM_LEN(apf_program)	\
 	(apf_program->instr_len * sizeof(apf_program->instrs[0]))
@@ -7993,48 +7994,6 @@ enum {  /* mode selection for reading/writing tx iqlo cal coefficients */
 	NAN_BAND_A,
 	NAN_BAND_INVALID = 0xFF
 };
-
-#if defined(WL_LINKSTAT)
-typedef struct {
-	uint32 preamble;
-	uint32 nss;
-	uint32 bw;
-	uint32 rateMcsIdx;
-	uint32 reserved;
-	uint32 bitrate;
-} wifi_rate;
-
-typedef struct {
-	uint16 version;
-	uint16 length;
-	uint32 tx_mpdu;
-	uint32 rx_mpdu;
-	uint32 mpdu_lost;
-	uint32 retries;
-	uint32 retries_short;
-	uint32 retries_long;
-	wifi_rate rate;
-} wifi_rate_stat_t;
-
-typedef int32 wifi_radio;
-
-typedef struct {
-	uint16 version;
-	uint16 length;
-	wifi_radio radio;
-	uint32 on_time;
-	uint32 tx_time;
-	uint32 rx_time;
-	uint32 on_time_scan;
-	uint32 on_time_nbd;
-	uint32 on_time_gscan;
-	uint32 on_time_roam_scan;
-	uint32 on_time_pno_scan;
-	uint32 on_time_hs20;
-	uint32 num_channels;
-	uint8 channels[1];
-} wifi_radio_stat;
-#endif /* WL_LINKSTAT */
 
 #ifdef WL11ULB
 /* ULB Mode configured via "ulb_mode" IOVAR */

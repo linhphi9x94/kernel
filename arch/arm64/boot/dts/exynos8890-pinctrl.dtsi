@@ -722,14 +722,12 @@
 			samsung,pins = "gpi0-4";
 			samsung,pin-function = <2>;
 			samsung,pin-pud = <0>;
-			samsung,pin-drv = <2>;
 		};
 
 		ufs_refclk_out: ufs-refclk-out {
 			samsung,pins = "gpi0-5";
 			samsung,pin-function = <2>;
-			samsung,pin-pud = <3>;
-			samsung,pin-drv = <0>;
+			samsung,pin-pud = <0>;
 		};
 
 		decon_f_te_on: decon_f_te_on {

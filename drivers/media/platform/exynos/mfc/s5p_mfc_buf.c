@@ -1036,7 +1036,8 @@ int s5p_mfc_set_dec_stream_buffer(struct s5p_mfc_ctx *ctx, struct s5p_mfc_buf *m
 		mfc_info_ctx("Decrease strm_size : %u -> %zu, gap : %d\n",
 				strm_size, set_strm_size_max(cpb_buf_size), CPB_GAP);
 		strm_size = set_strm_size_max(cpb_buf_size);
-		mfc_buf->vb.v4l2_planes[0].bytesused = strm_size;
+		if (mfc_buf)
+			mfc_buf->vb.v4l2_planes[0].bytesused = strm_size;
 	}
 
 	mfc_debug(2, "inst_no: %d, buf_addr: 0x%08llx\n", ctx->inst_no,

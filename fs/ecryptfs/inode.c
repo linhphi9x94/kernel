@@ -331,7 +331,7 @@ int ecryptfs_initialize_file(struct dentry *ecryptfs_dentry,
 		printk(KERN_ERR "DLP %s: file name: [%s], userid: [%d]\n",
 				__func__, ecryptfs_dentry->d_iname, crypt_stat->mount_crypt_stat->userid);
 #endif
-		if(!rc && (in_egroup_p(AID_KNOX_DLP) || in_egroup_p(AID_KNOX_DLP_RESTRICTED))) {
+		if(!rc && (in_egroup_p(AID_KNOX_DLP) || in_egroup_p(AID_KNOX_DLP_RESTRICTED) || in_egroup_p(AID_KNOX_DLP_MEDIA))) {
 			/* TODO: Can DLP files be created while in locked state? */
 			struct timespec ts;
 			crypt_stat->flags |= ECRYPTFS_DLP_ENABLED;
@@ -348,7 +348,7 @@ int ecryptfs_initialize_file(struct dentry *ecryptfs_dentry,
                 current->tgid, crypt_stat->mount_crypt_stat->userid, crypt_stat->mount_crypt_stat->partition_id,
                 ecryptfs_inode->i_ino, GFP_KERNEL);
 			}
-			else if(in_egroup_p(AID_KNOX_DLP_RESTRICTED)) {
+			else if(in_egroup_p(AID_KNOX_DLP_RESTRICTED) || in_egroup_p(AID_KNOX_DLP_MEDIA)) {
 				cmd = sdp_fs_command_alloc(FSOP_DLP_FILE_INIT_RESTRICTED,
                 current->tgid, crypt_stat->mount_crypt_stat->userid, crypt_stat->mount_crypt_stat->partition_id,
                 ecryptfs_inode->i_ino, GFP_KERNEL);
@@ -536,7 +536,7 @@ static int ecryptfs_lookup_interpose(struct dentry *dentry,
 	                &ecryptfs_superblock_to_private(inode->i_sb)->mount_crypt_stat;
 	        int engineid;
 
-	        printk("Lookup a directoy under root directory of current partition.\n");
+	        //printk("Lookup a directoy under root directory of current partition.\n");
 
 	        if(is_chamber_directory(mount_crypt_stat, dentry->d_name.name, &engineid)) {
 	            /*
@@ -1461,7 +1461,6 @@ ecryptfs_setxattr(struct dentry *dentry, const char *name, const void *value,
 			printk(KERN_ERR "DLP %s: setting knox_dlp not allowed by [%d]\n", __func__, from_kuid(&init_user_ns, current_uid()));
 			return -EPERM;
 		}
-		/* TODO: Need to set DLP flag here too? */
 	}
 #endif
 

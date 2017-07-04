@@ -2011,22 +2011,6 @@ static void read_capacity_error(struct scsi_disk *sdkp, struct scsi_device *sdp,
 
 #define READ_CAPACITY_RETRIES_ON_RESET	10
 
-/*
- * Ensure that we don't overflow sector_t when CONFIG_LBDAF is not set
- * and the reported logical block size is bigger than 512 bytes. Note
- * that last_sector is a u64 and therefore logical_to_sectors() is not
- * applicable.
- */
-static bool sd_addressable_capacity(u64 lba, unsigned int sector_size)
-{
-	u64 last_sector = (lba + 1ULL) << (ilog2(sector_size) - 9);
-
-	if (sizeof(sector_t) == 4 && last_sector > U32_MAX)
-		return false;
-
-	return true;
-}
-
 static int read_capacity_16(struct scsi_disk *sdkp, struct scsi_device *sdp,
 						unsigned char *buffer)
 {
@@ -2092,7 +2076,7 @@ static int read_capacity_16(struct scsi_disk *sdkp, struct scsi_device *sdp,
 		return -ENODEV;
 	}
 
-	if (!sd_addressable_capacity(lba, sector_size)) {
+	if ((sizeof(sdkp->capacity) == 4) && (lba >= 0xffffffffULL)) {
 		sd_printk(KERN_ERR, sdkp, "Too big for this kernel. Use a "
 			"kernel compiled with support for large block "
 			"devices.\n");
@@ -2178,7 +2162,7 @@ static int read_capacity_10(struct scsi_disk *sdkp, struct scsi_device *sdp,
 		return sector_size;
 	}
 
-	if (!sd_addressable_capacity(lba, sector_size)) {
+	if ((sizeof(sdkp->capacity) == 4) && (lba == 0xffffffff)) {
 		sd_printk(KERN_ERR, sdkp, "Too big for this kernel. Use a "
 			"kernel compiled with support for large block "
 			"devices.\n");
@@ -3142,19 +3126,19 @@ static void srpmb_worker(struct work_struct *data)
 	Rpmb_Req *req;
 
 	if (!data) {
-		printk("[srpmb] rpmb work_struct data invalid\n");
+		printk("error srpmb_worker: rpmb work_struct data invalid\n");
 		return ;
 	}
 	rpmb_ctx = container_of(data, struct rpmb_irq_ctx, work);
 
 	if (!rpmb_ctx->dev) {
-		printk("[srpmb] rpmb_ctx->dev invalid\n");
+		printk("error srpmb_worker: rpmb_ctx->dev invalid\n");
 		return ;
 	}
 	sdp = to_scsi_device(rpmb_ctx->dev);
 
 	if (!rpmb_ctx->vir_addr) {
-		printk("[srpmb] rpmb_ctx->vir_addr invalid\n");
+		sdev_printk(KERN_WARNING, sdp, "rpmb_ctx->vir_addr invalid\n");
 		return ;
 	}
 	req = (Rpmb_Req *)rpmb_ctx->vir_addr;
@@ -3163,7 +3147,7 @@ static void srpmb_worker(struct work_struct *data)
 	case GET_WRITE_COUNTER:
 		if (req->data_len != RPMB_PACKET_SIZE) {
 			req->status_flag = WRITE_COUTNER_DATA_LEN_ERROR;
-			printk("[srpmb] data len is invalid\n");
+			sdev_printk(KERN_WARNING, sdp, "data len is invalid\n");
 			break;
 		}
 
@@ -3173,7 +3157,9 @@ static void srpmb_worker(struct work_struct *data)
 		ret = srpmb_scsi_ioctl(sdp, req);
 		if (ret < 0) {
 			req->status_flag = WRITE_COUTNER_SECURITY_OUT_ERROR;
-			printk("[srpmb] ioctl read_counter error: %x\n", ret);
+			sdev_printk(KERN_WARNING, sdp,
+				"ioctl read_counter error: %x\n", ret);
+
 			break;
 		}
 
@@ -3184,7 +3170,7 @@ static void srpmb_worker(struct work_struct *data)
 		ret = srpmb_scsi_ioctl(sdp, req);
 		if (ret < 0) {
 			req->status_flag = WRITE_COUTNER_SECURITY_IN_ERROR;
-			printk("[srpmb] ioctl error : %x\n", ret);
+			sdev_printk(KERN_WARNING, sdp, "ioctl error : %x\n", ret);
 			break;
 		}
 		req->status_flag = PASS_STATUS;
@@ -3194,7 +3180,7 @@ static void srpmb_worker(struct work_struct *data)
 		if (req->data_len < RPMB_PACKET_SIZE ||
 			req->data_len > RPMB_PACKET_SIZE * 64) {
 			req->status_flag = WRITE_DATA_LEN_ERROR;
-			printk("[srpmb] data len is invalid\n");
+			sdev_printk(KERN_WARNING, sdp, "data len is invalid\n");
 			break;
 		}
 
@@ -3204,7 +3190,8 @@ static void srpmb_worker(struct work_struct *data)
 		ret = srpmb_scsi_ioctl(sdp, req);
 		if (ret < 0) {
 			req->status_flag = WRITE_DATA_SECURITY_OUT_ERROR;
-			printk("[srpmb] ioctl write data error: %x\n", ret);
+			sdev_printk(KERN_WARNING, sdp,
+				"ioctl write data error: %x\n", ret);
 			break;
 		}
 
@@ -3218,7 +3205,8 @@ static void srpmb_worker(struct work_struct *data)
 		ret = srpmb_scsi_ioctl(sdp, req);
 		if (ret < 0) {
 			req->status_flag = WRITE_DATA_RESULT_SECURITY_OUT_ERROR;
-			printk("[srpmb] ioctl write_data result error: %x\n", ret);
+			sdev_printk(KERN_WARNING, sdp,
+				"ioctl write_data result error: %x\n", ret);
 			break;
 		}
 
@@ -3229,7 +3217,8 @@ static void srpmb_worker(struct work_struct *data)
 		ret = srpmb_scsi_ioctl(sdp, req);
 		if (ret < 0) {
 			req->status_flag = WRITE_DATA_SECURITY_IN_ERROR;
-			printk("[srpmb] ioctl write_data result error: %x\n", ret);
+			sdev_printk(KERN_WARNING, sdp,
+				"ioctl write_data result error: %x\n", ret);
 			break;
 		}
 
@@ -3238,14 +3227,15 @@ static void srpmb_worker(struct work_struct *data)
 			req->status_flag = PASS_STATUS;
 		} else {
 			req->status_flag = packet.result;
-			printk("[srpmb] packet result error: %x\n", req->status_flag);
+			sdev_printk(KERN_WARNING, sdp,
+				"packet result error: %x\n", req->status_flag);
 		}
 		break;
 	case READ_DATA:
 		if (req->data_len < RPMB_PACKET_SIZE ||
 			req->data_len > RPMB_PACKET_SIZE * 64) {
 			req->status_flag = READ_LEN_ERROR;
-			printk("[srpmb] data len is invalid\n");
+			sdev_printk(KERN_WARNING, sdp, "data len is invalid\n");
 			break;
 		}
 
@@ -3255,7 +3245,8 @@ static void srpmb_worker(struct work_struct *data)
 		ret = srpmb_scsi_ioctl(sdp, req);
 		if (ret < 0) {
 			req->status_flag = READ_DATA_SECURITY_OUT_ERROR;
-			printk("[srpmb] ioctl read data error: %x\n", ret);
+			sdev_printk(KERN_WARNING, sdp,
+				"ioctl read data error: %x\n", ret);
 			break;
 		}
 
@@ -3266,29 +3257,24 @@ static void srpmb_worker(struct work_struct *data)
 		ret = srpmb_scsi_ioctl(sdp, req);
 		if (ret < 0) {
 			req->status_flag = READ_DATA_SECURITY_IN_ERROR;
-			printk("[srpmb] ioctl result read data error : %x\n", ret);
+			sdev_printk(KERN_WARNING, sdp,
+				"ioctl result read data error : %x\n", ret);
 			break;
 		}
 		req->status_flag = PASS_STATUS;
 
 		break;
 	default:
-		printk("[srpmb] invalid requset type : %x\n", req->type);
+		sdev_printk(KERN_WARNING, sdp,
+				"invalid requset type : %x\n", req->type);
 	}
 }
 
 static irqreturn_t rpmb_irq_handler(int intr, void *arg)
 {
-	uint32_t value;
 	struct rpmb_irq_ctx *rpmb_ctx = (struct rpmb_irq_ctx *)arg;
 
-	schedule_work(&rpmb_ctx->work);
-
-	spin_lock(&sd_index_lock);
-	value = __raw_readl(rpmb_ctx->srpmb_pendr + RPMB_PENDING_OFFSET);
-	value |= GICD_RPMB_SET;
-	__raw_writel(value , rpmb_ctx->srpmb_pendr + RPMB_PENDING_OFFSET);
-	spin_unlock(&sd_index_lock);
+	queue_work(rpmb_ctx->srpmb_queue, &rpmb_ctx->work);
 
 	return IRQ_HANDLED;
 }
@@ -3374,12 +3360,14 @@ static int sd_probe(struct device *dev)
 			blk_queue_rq_timeout(sdp->request_queue,
 					     SD_UFS_TIMEOUT);
 	}
-
+        
+#ifdef CONFIG_LARGE_DIRTY_BUFFER
 	if (!sdp->host->by_ufs) {
 		sdp->request_queue->backing_dev_info.max_ratio = 10;
 		sdp->request_queue->backing_dev_info.min_ratio = 10;
 		sdp->request_queue->backing_dev_info.capabilities |= BDI_CAP_STRICTLIMIT;
 	}
+#endif
 
 	device_initialize(&sdkp->dev);
 	sdkp->dev.parent = dev;
@@ -3431,22 +3419,32 @@ static int sd_probe(struct device *dev)
 				goto out_srpmb_init_fail;
 
 			sdkp->rpmb_ctx->dev = dev;
-			INIT_WORK(&rpmb_ctx->work, srpmb_worker);
+			rpmb_ctx->srpmb_queue = alloc_workqueue("srpmb_wq",
+							WQ_MEM_RECLAIM | WQ_UNBOUND, 1);
+			if (!rpmb_ctx->srpmb_queue) {
+				sdev_printk(KERN_WARNING, sdp,
+					"Fail to alloc workqueue for ufs srpmb\n");
+				goto out_srpmb_init_fail;
+			}
 
 			ret = request_irq(RPMB_SPI, rpmb_irq_handler,
 					IRQF_TRIGGER_RISING, "srpmb", rpmb_ctx);
 			if (ret) {
-				printk("rpmb request irq failed: %x\n", ret);
+				sdev_printk(KERN_WARNING, sdp,
+					"rpmb request irq failed: %x\n", ret);
 				goto out_srpmb_init_fail;
 			}
 
 			ret = exynos_smc(SMC_SRPMB_WSM, rpmb_ctx->phy_addr, 0, 0);
 			if (ret) {
-				printk("rpmb wsm smc init failed: %x\n", ret);
+				sdev_printk(KERN_WARNING, sdp,
+					"rpmb wsm smc init failed: %x\n", ret);
 				goto out_srpmb_init_fail;
 			}
+			INIT_WORK(&rpmb_ctx->work, srpmb_worker);
 		} else {
-			printk("rpmb wsm dma alloc failed\n");
+			sdev_printk(KERN_WARNING, sdp,
+				"rpmb wsm dma alloc failed\n");
 			goto out_srpmb_dma_alloc_fail;
 		}
 	}
@@ -3454,6 +3452,9 @@ static int sd_probe(struct device *dev)
 	return 0;
 
  out_srpmb_init_fail:
+	if (sdkp->rpmb_ctx->srpmb_queue)
+		destroy_workqueue(sdkp->rpmb_ctx->srpmb_queue);
+
 	dma_free_coherent(dev, RPMB_BUF_MAX_SIZE,
 			sdkp->rpmb_ctx->vir_addr, sdkp->rpmb_ctx->phy_addr);
 
@@ -3509,6 +3510,21 @@ static int sd_remove(struct device *dev)
 		sd_printk(KERN_NOTICE, sdkp, "scan thread kill success\n");
 	}
 #endif
+
+#if defined(CONFIG_SRPMB)
+	if (strcmp(dev_name(dev), IS_INCLUDE_RPMB_DEVICE) == 0) {
+		if (sdkp->rpmb_ctx) {
+			if (sdkp->rpmb_ctx->srpmb_queue)
+				destroy_workqueue(sdkp->rpmb_ctx->srpmb_queue);
+
+			dma_free_coherent(dev, RPMB_BUF_MAX_SIZE,
+				sdkp->rpmb_ctx->vir_addr, sdkp->rpmb_ctx->phy_addr);
+
+			kfree(sdkp->rpmb_ctx);
+		}
+	}
+#endif
+
 	async_synchronize_full_domain(&scsi_sd_pm_domain);
 	async_synchronize_full_domain(&scsi_sd_probe_domain);
 	device_del(&sdkp->dev);

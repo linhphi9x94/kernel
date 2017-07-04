@@ -2247,16 +2247,16 @@ static void wq_func_group_xxx(struct fimc_is_groupmgr *groupmgr,
 	BUG_ON(!frame);
 
 	/* perframe error control */
-	if (test_bit(FIMC_IS_SUBDEV_FORCE_SET, &group->leader.state)) {
+	if (test_bit(FIMC_IS_SUBDEV_PARAM_ERR, &group->leader.state)) {
 		if (!status) {
 			if (frame->lindex || frame->hindex)
-				clear_bit(FIMC_IS_SUBDEV_FORCE_SET, &group->leader.state);
+				clear_bit(FIMC_IS_SUBDEV_PARAM_ERR, &group->leader.state);
 			else
 				status = SHOT_ERR_PERFRAME;
 		}
 	} else {
 		if (status && (frame->lindex || frame->hindex))
-			set_bit(FIMC_IS_SUBDEV_FORCE_SET, &group->leader.state);
+			set_bit(FIMC_IS_SUBDEV_PARAM_ERR, &group->leader.state);
 	}
 
 	if (status) {
@@ -3029,7 +3029,7 @@ int fimc_is_interface_probe(struct fimc_is_interface *this,
 	init_waitqueue_head(&this->idle_wait_queue);
 	spin_lock_init(&this->shot_check_lock);
 
-	this->workqueue = alloc_workqueue("fimc-is/highpri", WQ_HIGHPRI, 0);
+	this->workqueue = alloc_workqueue("fimc-is/highpri", WQ_HIGHPRI | WQ_UNBOUND, 0);
 	if (!this->workqueue)
 		probe_warn("failed to alloc own workqueue, will be use global one");
 

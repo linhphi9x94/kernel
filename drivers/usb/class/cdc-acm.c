@@ -315,12 +315,6 @@ static void acm_ctrl_irq(struct urb *urb)
 		break;
 
 	case USB_CDC_NOTIFY_SERIAL_STATE:
-		if (le16_to_cpu(dr->wLength) != 2) {
-			dev_dbg(&acm->control->dev,
-				"%s - malformed serial state\n", __func__);
-			break;
-		}
-
 		newctrl = get_unaligned_le16(data);
 
 		if (!acm->clocal && (acm->ctrlin & ~newctrl & ACM_CTRL_DCD)) {
@@ -357,10 +351,11 @@ static void acm_ctrl_irq(struct urb *urb)
 
 	default:
 		dev_dbg(&acm->control->dev,
-			"%s - unknown notification %d received: index %d len %d\n",
+			"%s - unknown notification %d received: index %d "
+			"len %d data0 %d data1 %d\n",
 			__func__,
-			dr->bNotificationType, dr->wIndex, dr->wLength);
-
+			dr->bNotificationType, dr->wIndex,
+			dr->wLength, data[0], data[1]);
 		break;
 	}
 exit:
@@ -877,6 +872,8 @@ static int wait_serial_change(struct acm *acm, unsigned long arg)
 	DECLARE_WAITQUEUE(wait, current);
 	struct async_icount old, new;
 
+	if (arg & (TIOCM_DSR | TIOCM_RI | TIOCM_CD ))
+		return -EINVAL;
 	do {
 		spin_lock_irq(&acm->read_lock);
 		old = acm->oldcount;
@@ -1071,6 +1068,21 @@ static int acm_write_buffers_alloc(struct acm *acm)
 	return 0;
 }
 
+static int check_samsung_feature_ums_acm_device(struct usb_device *dev)
+{
+	int ret = 0;
+
+ 	pr_info("%s : product=%s\n", __func__, dev->product);
+
+	if (!dev->product)
+		return ret;
+
+	if (!strnicmp(dev->product , "SM-B360E", 8))
+		ret = 1;
+
+	return ret;
+}
+
 static int acm_probe(struct usb_interface *intf,
 		     const struct usb_device_id *id)
 {
@@ -1218,6 +1230,11 @@ next_desc:
 				goto look_for_collapsed_interface;
 			}
 		}
+	} else if (check_samsung_feature_ums_acm_device(usb_dev)) {
+		data_interface = usb_ifnum_to_if(usb_dev, 2);
+		control_interface = usb_ifnum_to_if(usb_dev, 1);
+		pr_info("%s : manual set data_interface = 2, control_interface = 1\n", __func__);
+		goto skip_normal_probe;
 	} else {
 		control_interface = usb_ifnum_to_if(usb_dev, union_header->bMasterInterface0);
 		data_interface = usb_ifnum_to_if(usb_dev, (data_interface_num = union_header->bSlaveInterface0));

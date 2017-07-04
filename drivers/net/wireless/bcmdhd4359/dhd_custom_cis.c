@@ -25,7 +25,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd_custom_cis.c 645825 2016-06-27 11:59:46Z $
+ * $Id: dhd_custom_cis.c 665983 2016-10-19 13:13:32Z $
  */
 
 #include <typedefs.h>
@@ -47,10 +47,11 @@
 #ifdef DHD_USE_CISINFO
 
 /* File Location to keep each information */
-#define MACINFO "/data/.mac.info"
+#define MACINFO	PLATFORM_PATH".mac.info"
+#define CIDINFO	PLATFORM_PATH".cid.info"
+#define	REVINFO	PLATFORM_PATH".rev"
+
 #define MACINFO_EFS "/efs/wifi/.mac.info"
-#define CIDINFO "/data/.cid.info"
-#define	REVINFO "/data/.rev"
 
 /* Definitions for MAC address */
 #define MAC_BUF_SIZE 20

@@ -169,7 +169,7 @@ static struct smtc_reg_data setup_reg[] = {
     },
     {
         .reg = SX9320_IRQ_ENABLE_REG,
-        .val = 0x70,
+        .val = 0x00,
     },
     {
         .reg = SX9320_GNRLCTRL1_REG, /* 2 - PHEN */

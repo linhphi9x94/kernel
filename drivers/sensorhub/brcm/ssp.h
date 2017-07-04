@@ -40,6 +40,7 @@
 #include <linux/ssp_platformdata.h>
 #include <linux/spi/spi.h>
 #include "bbdpl/bbd.h"
+#include <linux/sec_sysfs.h>
 
 #ifdef CONFIG_SENSORS_SSP_HIFI_BATCHING
 #include <linux/vmalloc.h> /* memory scraps issue. */
@@ -103,6 +104,19 @@
 #define DATA_PACKET_SIZE	960
 #endif
 #define MAX_SSP_PACKET_SIZE	1000 // this packet size related when AP send ssp packet to MCU. 
+
+#define SSP_DEBUG_TIME_FLAG_ON        "SSP:DEBUG_TIME=1" 
+#define SSP_DEBUG_TIME_FLAG_OFF        "SSP:DEBUG_TIME=0" 
+ 
+extern bool ssp_debug_time_flag; 
+
+#define DEBUG_SSP_PACKET_HEX_RECV(msg, len) \
+        print_hex_dump(KERN_INFO, "SSP<-MCU: ", \
+        DUMP_PREFIX_NONE, 16, 1, (msg), (len), true) \
+ 
+#define ssp_debug_time(format, ...) \
+	if (unlikely(ssp_debug_time_flag)) \
+		pr_info(format, ##__VA_ARGS__)
 
 /* SSP Binary Type */
 enum {
@@ -229,7 +243,10 @@ enum {
 #define MSG2SSP_AP_SET_LIGHT_COEF 		0x49
 #define MSG2SSP_AP_GET_LIGHT_COEF		0x50
 #define MSG2SSP_AP_SENSOR_PROX_ALERT_THRESHOLD 0x51
+//for tmd4904
+#define MSG2SSP_AP_SENSOR_PROX_GET_DEVICE_ID 0x52
 
+#define MSG2SSP_AP_REGISTER_DUMP		0x4A
 #define MSG2SSP_AP_FUSEROM			0X01
 
 /* voice data */
@@ -287,6 +304,11 @@ enum {
 #define DEFUALT_LOW_THRESHOLD			1400
 #define DEFUALT_CAL_HIGH_THRESHOLD		2000
 #define DEFUALT_CAL_LOW_THRESHOLD		840
+//for TMD4904
+#define DEFUALT_HIGH_THRESHOLD_TMD4904			1500
+#define DEFUALT_LOW_THRESHOLD_TMD4904			1100
+#define DEFUALT_CAL_HIGH_THRESHOLD_TMD4904		1500
+#define DEFUALT_CAL_LOW_THRESHOLD_TMD4904		660
 #endif
 #endif
 
@@ -330,6 +352,9 @@ enum {
 #define GYRO_CALIBRATION_STATE_REGISTERED 	1
 #define GYRO_CALIBRATION_STATE_EVENT_OCCUR  2
 #define GYRO_CALIBRATION_STATE_DONE 		3
+
+#define TMD4903	0xB8
+#define TMD4904 0xD0
 
 /* temphumidity sensor*/
 struct shtc1_buffer {
@@ -724,6 +749,7 @@ struct ssp_data {
 	struct notifier_block cpuidle_muic_nb;
 #endif
 
+	bool bFirstRef;
 	bool bSspShutdown;
 	bool bAccelAlert;
 	bool bProximityRawEnabled;
@@ -757,6 +783,14 @@ struct ssp_data {
 	unsigned int uProxLoThresh_default;
 	unsigned int uProxHiThresh_cal;
 	unsigned int uProxLoThresh_cal;
+
+	// for tmd4904
+	unsigned int uProxHiThresh_tmd4904;
+	unsigned int uProxLoThresh_tmd4904;
+	unsigned int uProxHiThresh_default_tmd4904;
+	unsigned int uProxLoThresh_default_tmd4904;
+	unsigned int uProxHiThresh_cal_tmd4904;
+	unsigned int uProxLoThresh_cal_tmd4904;
 #endif
 
 	unsigned int uProxAlertHiThresh;
@@ -787,6 +821,8 @@ struct ssp_data {
 	atomic64_t aSensorEnable;
 	int64_t adDelayBuf[SENSOR_MAX];
 	u64 lastTimestamp[SENSOR_MAX];
+    u64 LastSensorTimeforReset[SENSOR_MAX]; //only use accel and light
+	u32 IsBypassMode[SENSOR_MAX]; //only use accel and light
 	s32 batchLatencyBuf[SENSOR_MAX];
 	s8 batchOptBuf[SENSOR_MAX];
 	bool reportedData[SENSOR_MAX];
@@ -890,6 +926,29 @@ struct ssp_data {
 	int motor_state;
 #endif
 	char sensor_state[SENSOR_MAX + 1];
+	unsigned int uNoRespSensorCnt;
+	unsigned int errorCount;
+    unsigned int pktErrCnt;
+	unsigned int mcuCrashedCnt;
+	bool mcuAbnormal;
+	bool IsMcuCrashed;
+
+/* variables for conditional leveling timestamp */
+	bool first_sensor_data[SENSOR_MAX];	
+	u64 timestamp_factor;
+
+	struct regulator *regulator_vdd_mcu_1p8;
+	const char *vdd_mcu_1p8_name;
+
+	int shub_en;
+	bool intendedMcuReset;
+
+/* for sensordump */
+	char* sensor_dump[SENSOR_MAX];
+	int sensor_dump_cnt_light;
+	bool sensor_dump_flag_light;
+	bool sensor_dump_flag_proximity;
+	struct sensor_value prev_lightdata;
 };
 
 struct ssp_big {
@@ -990,6 +1049,8 @@ int set_glass_type(struct ssp_data *);
 int set_magnetic_static_matrix(struct ssp_data *);
 void sync_sensor_state(struct ssp_data *);
 void set_proximity_threshold(struct ssp_data *);
+//for tmd4904
+int get_proximity_device_id(struct ssp_data *);
 void set_proximity_alert_threshold(struct ssp_data *data);
 void set_proximity_barcode_enable(struct ssp_data *, bool);
 void set_gesture_current(struct ssp_data *, unsigned char);
@@ -1080,6 +1141,9 @@ void ssp_temp_task(struct work_struct *work);
 
 int callback_bbd_on_control(void *ssh_data, const char *str_ctrl);
 int callback_bbd_on_mcu_ready(void *ssh_data, bool ready);
+#if ANDROID_VERSION >= 70000
+int callback_bbd_on_packet(void *ssh_data, const char *buf, size_t size);
+#endif
 int callback_bbd_on_packet_alarm(void *ssh_data);
 int callback_bbd_on_mcu_reset(void *ssh_data);
 void bbd_on_packet_work_func(struct work_struct *work);
@@ -1099,4 +1163,6 @@ u64 get_current_timestamp(void);
 void ssp_reset_batching_resources(struct ssp_data *data);
 #endif
 
+int send_sensor_dump_command(struct ssp_data *data, u8 sensor_type);
+int send_all_sensor_dump_command(struct ssp_data* data);
 #endif

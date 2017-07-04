@@ -31,6 +31,7 @@
 #include <linux/irq.h>
 #include <linux/of_gpio.h>
 #include <linux/time.h>
+#include <linux/vmalloc.h>
 
 #include "../../../i2c/busses/i2c-exynos5.h"
 #include "sec_ts.h"
@@ -220,6 +221,11 @@ int sec_ts_i2c_write(struct sec_ts_data * ts, u8 reg, u8 * data, int len)
 		}
 		if (retry > 0)
 			sec_ts_delay(10);
+
+#ifdef USE_HW_PARAMETER
+		if (retry > 1)
+			ts->comm_err_count++;
+#endif
 	}
 	mutex_unlock(&ts->i2c_mutex);
 	if (retry == 10) {
@@ -288,6 +294,11 @@ int sec_ts_i2c_read(struct sec_ts_data * ts, u8 reg, u8 * data, int len)
 		}
 		if (retry > 0)
 			sec_ts_delay(10);
+
+#ifdef USE_HW_PARAMETER
+		if (retry > 1)
+			ts->comm_err_count++;
+#endif
 	}
 
 	if (retry == SEC_TS_I2C_RETRY_CNT) {
@@ -328,6 +339,11 @@ int sec_ts_i2c_read(struct sec_ts_data * ts, u8 reg, u8 * data, int len)
 		}
 		if (retry > 0)
 			sec_ts_delay(10);
+
+#ifdef USE_HW_PARAMETER
+		if (retry > 1)
+			ts->comm_err_count++;
+#endif
 	}
 
 	if (retry == SEC_TS_I2C_RETRY_CNT) {
@@ -429,6 +445,11 @@ static int sec_ts_i2c_read_bulk(struct sec_ts_data * ts, u8 * data, int len)
 			mutex_unlock(&ts->i2c_mutex);
 			goto err;
 		}
+
+#ifdef USE_HW_PARAMETER
+		if (retry > 1)
+			ts->comm_err_count++;
+#endif
 	}
 
 	mutex_unlock(&ts->i2c_mutex);
@@ -519,6 +540,9 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 	struct sec_ts_event_coordinate * p_event_coord;
 	struct sec_ts_event_status * p_event_status;
 	struct sec_ts_coordinate coordinate;
+#if defined(CONFIG_SEC_FACTORY) || defined(CONFIG_TOUCHSCREEN_SUPPORT_MULTIMEDIA)
+	u8 report_pressure;
+#endif
 
 	is_event_remain = 0;
 	read_event_count = 0;
@@ -577,6 +601,28 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 				(read_event_buff[1] == SEC_TS_ERR_ESD)) {
 				input_err(true, &ts->client->dev, "%s: ESD detected. run reset\n", __func__);
 				schedule_work(&ts->reset_work.work);
+			}
+
+			if (read_event_buff[0] == TYPE_STATUS_EVENT_ACK &&
+					read_event_buff[1] == SEC_TS_ACK_EVENT_WATER_WET_MODE) {
+				ts->wet_mode = read_event_buff[2];
+				input_info(true, &ts->client->dev, "%s: water wet mode %d\n",
+						__func__, ts->wet_mode);
+#ifdef USE_HW_PARAMETER
+				if (ts->wet_mode)
+					ts->wet_count++;
+#endif
+			}
+
+			if (read_event_buff[0] == TYPE_STATUS_EVENT_ACK &&
+					read_event_buff[1] == SEC_TS_ACK_EVENT_WATER_DIVE_MODE) {
+				ts->dive_mode = read_event_buff[2];
+				input_info(true, &ts->client->dev, "%s: water dive mode %d\n",
+						__func__, ts->dive_mode);
+#ifdef USE_HW_PARAMETER
+			if (ts->dive_mode)
+				ts->dive_count++;
+#endif
 			}
 
 			if ((ts->use_sponge) && (read_event_buff[0] == TYPE_STATUS_EVENT_ACK) &&
@@ -712,6 +758,9 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 							/*coordinate.action = SEC_TS_Coordinate_Action_None;*/
 
 							input_mt_slot(ts->input_dev, t_id);
+#if defined(CONFIG_SEC_FACTORY) || defined(CONFIG_TOUCHSCREEN_SUPPORT_MULTIMEDIA)
+							input_report_abs(ts->input_dev, ABS_MT_PRESSURE, 0);
+#endif
 							input_mt_report_slot_state(ts->input_dev, MT_TOOL_FINGER, 0);
 
 							if (ts->touch_count > 0 )
@@ -719,6 +768,10 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 							if (ts->touch_count == 0) {
 								input_report_key(ts->input_dev, BTN_TOUCH, 0);
 								input_report_key(ts->input_dev, BTN_TOOL_FINGER, 0);
+#ifdef USE_HW_PARAMETER
+								ts->check_multi = 0;
+#endif
+
 							}
 						} else if (coordinate.action == SEC_TS_Coordinate_Action_Press) {
 							ts->touch_count++;
@@ -737,8 +790,21 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 #ifdef SEC_TS_SUPPORT_SEC_SWIPE
 							input_report_abs(ts->input_dev, ABS_MT_PALM, coordinate.palm);
 #endif
-#ifdef CONFIG_SEC_FACTORY
-							input_report_abs(ts->input_dev, ABS_MT_PRESSURE, coordinate.touch_width);
+#if defined(CONFIG_SEC_FACTORY) || defined(CONFIG_TOUCHSCREEN_SUPPORT_MULTIMEDIA)
+							report_pressure = coordinate.touch_width;
+							if(report_pressure <= 0)
+								report_pressure = 1;
+#if defined(CONFIG_TOUCHSCREEN_SUPPORT_MULTIMEDIA)
+							if(!(ts->velocity_enable||ts->brush_enable))
+								report_pressure = 255;
+#endif
+							input_report_abs(ts->input_dev, ABS_MT_PRESSURE, report_pressure);
+#endif
+#ifdef USE_HW_PARAMETER
+							if ((ts->touch_count > 2) && (ts->check_multi == 0)) {
+								ts->check_multi = 1;
+								ts->multi_count++;
+							}
 #endif
 						} else if (coordinate.action == SEC_TS_Coordinate_Action_Move) {
 							if ((coordinate.ttype == SEC_TS_TOUCHTYPE_GLOVE) && !ts->touchkey_glove_mode_status) {
@@ -758,8 +824,15 @@ static void sec_ts_read_event(struct sec_ts_data *ts)
 #ifdef SEC_TS_SUPPORT_SEC_SWIPE
 							input_report_abs(ts->input_dev, ABS_MT_PALM, coordinate.palm);
 #endif
-#ifdef CONFIG_SEC_FACTORY
-							input_report_abs(ts->input_dev, ABS_MT_PRESSURE, coordinate.touch_width);
+#if defined(CONFIG_SEC_FACTORY) || defined(CONFIG_TOUCHSCREEN_SUPPORT_MULTIMEDIA)
+							report_pressure = coordinate.touch_width;
+							if(report_pressure <= 0)
+								report_pressure = 1;
+#if defined(CONFIG_TOUCHSCREEN_SUPPORT_MULTIMEDIA)
+							if(!(ts->velocity_enable||ts->brush_enable))
+								report_pressure = 255;
+#endif
+							input_report_abs(ts->input_dev, ABS_MT_PRESSURE, report_pressure);
 #endif
 
 							coordinate.mcount++;
@@ -1022,6 +1095,40 @@ cover_enable_err:
 }
 EXPORT_SYMBOL(sec_ts_set_cover_type);
 
+#ifdef TWO_LEVEL_GRIP_CONCEPT
+void sec_ts_set_grip_type(struct sec_ts_data *ts, u8 set_type)
+{
+	u8 mode = G_NONE;
+
+	if(!(ts->plat_data->grip_concept & 0x6))	// 0x2 : grace, 0x4 : dual mode for hero2
+		return;
+
+	input_info(true, &ts->client->dev, "%s: re-init grip(%d), edh:%d, edg:%d, lan:%d\n", __func__,\
+		set_type, ts->grip_edgehandler_direction, ts->grip_edge_range, ts->grip_landscape_mode);
+
+	// edge handler
+	if(ts->grip_edgehandler_direction != 0)	// default 0
+		mode = mode | G_SET_EDGE_HANDLER;
+
+	if(set_type == GRIP_ALL_DATA){
+		//edge
+		if(ts->grip_edge_range != 60)		// default 60
+			mode = mode | G_SET_EDGE_ZONE;
+
+		// dead zone
+		if(ts->grip_landscape_mode == 1)	// default 0 mode, 32
+			mode = mode | G_SET_LANDSCAPE_MODE;
+		else
+			mode = mode | G_SET_NORMAL_MODE;
+	}
+
+	if(mode)
+		set_grip_data_to_ic(ts, mode);
+
+}
+#endif
+
+
 int sec_ts_i2c_write_burst(struct sec_ts_data *ts, u8 *data, int len)
 {
 	int ret;
@@ -1114,13 +1221,14 @@ static ssize_t sec_ts_regread_show(struct device *dev, struct device_attribute *
 
 	disable_irq(ts->client->irq);
 
+	mutex_lock(&ts->device_mutex);
+
 	read_lv1_buff = (u8 *)kzalloc(sizeof(u8)*lv1_readsize, GFP_KERNEL);
 	if (!read_lv1_buff) {
 		input_err(true, &ts->client->dev, "%s kzalloc failed\n", __func__);
 		goto malloc_err;
 	}
 
-	mutex_lock(&ts->device_mutex);
 	remain = lv1_readsize;
 	offset = 0;
 	do
@@ -1173,11 +1281,18 @@ static ssize_t sec_ts_gesture_status_show(struct device *dev, struct device_attr
 
 static ssize_t sec_ts_regreadsize_store(struct device *dev, struct device_attribute *attr, const char *buf, size_t size)
 {
+	struct sec_ts_data *ts = dev_get_drvdata(dev);
+
+	mutex_lock(&ts->device_mutex);
+
 	lv1cmd = buf[0];
 	lv1_readsize = ((unsigned int)buf[4] << 24) |
 			((unsigned int)buf[3]<<16) |((unsigned int) buf[2]<<8) |((unsigned int)buf[1]<<0);
 	lv1_readoffset = 0;
 	lv1_readremain = 0;
+
+	mutex_unlock(&ts->device_mutex);
+
 	return size;
 }
 
@@ -1685,6 +1800,20 @@ static int sec_ts_probe(struct i2c_client *client, const struct i2c_device_id *i
 		goto err_get_drv_data;
 	}
 
+#ifdef TWO_LEVEL_GRIP_CONCEPT
+	if(ts->plat_data->grip_concept & 0x4){	// 0x2 : grace, 0x4 : dual mode for hero2
+		ts->gripreg_edge_handler = SEC_TS_CMD_EDGE_HANDLER_FOR_DUAL;
+		ts->gripreg_edge_area = SEC_TS_CMD_EDGE_AREA_FOR_DUAL;
+		ts->gripreg_dead_zone = SEC_TS_CMD_DEAD_ZONE_FOR_DUAL;
+		ts->gripreg_landscape_mode = SEC_TS_CMD_LANDSCAPE_MODE_FOR_DUAL;
+	}else{
+		ts->gripreg_edge_handler = SEC_TS_CMD_EDGE_HANDLER;
+		ts->gripreg_edge_area = SEC_TS_CMD_EDGE_AREA;
+		ts->gripreg_dead_zone = SEC_TS_CMD_DEAD_ZONE;
+		ts->gripreg_landscape_mode = SEC_TS_CMD_LANDSCAPE_MODE;
+	}
+#endif
+
 	ts->input_dev = input_allocate_device();
 	if (!ts->input_dev) {
 		input_err(true, &ts->client->dev, "%s: allocate device err!\n", __func__);
@@ -1830,7 +1959,7 @@ static int sec_ts_probe(struct i2c_client *client, const struct i2c_device_id *i
 #endif
 	input_set_abs_params(ts->input_dev, ABS_MT_DISTANCE, 0, 255, 0, 0);
 
-#ifdef CONFIG_SEC_FACTORY
+#if defined(CONFIG_SEC_FACTORY) || defined(CONFIG_TOUCHSCREEN_SUPPORT_MULTIMEDIA)
 	input_set_abs_params(ts->input_dev, ABS_MT_PRESSURE, 0, 255, 0, 0);
 #endif
 
@@ -1883,7 +2012,7 @@ static int sec_ts_probe(struct i2c_client *client, const struct i2c_device_id *i
 #ifdef SEC_TS_SUPPORT_SPONGELIB
 	sec_ts_check_custom_library(ts);
 #endif
-	schedule_delayed_work(&ts->read_nv_work, msecs_to_jiffies(100));
+	schedule_delayed_work(&ts->read_nv_work, msecs_to_jiffies(5000));
 
 	ts_dup = ts;
 
@@ -1947,6 +2076,9 @@ void sec_ts_release_all_finger(struct sec_ts_data *ts)
 	input_report_switch(ts->input_dev, SW_GLOVE, false);
 	ts->touchkey_glove_mode_status = false;
 	ts->touch_count = 0;
+#ifdef USE_HW_PARAMETER
+	ts->check_multi = 0;
+#endif
 
 	input_report_switch(ts->input_dev, KEY_SIDE_GESTURE_LEFT, false);
 	input_report_switch(ts->input_dev, KEY_SIDE_GESTURE_RIGHT, false);
@@ -1991,6 +2123,20 @@ static int sec_ts_set_lowpowermode(struct sec_ts_data *ts, u8 mode)
 		ret = sec_ts_i2c_write(ts, SEC_TS_CMD_GESTURE_MODE, &lowpower_data, 1);
 		if (ret < 0)
 			input_err(true, &ts->client->dev, "%s: Failed to write mode\n", __func__);
+
+		if (ts->lowpower_flag & SEC_TS_MODE_SPONGE_AOD) {
+			u8 aod_rect[10] = {0x02, 0};
+
+			/* Clear AOD_RECT */
+			input_info(true, &ts->client->dev, "%s: clear aod_rect\n", __func__);
+			ret = ts->sec_ts_i2c_write(ts, SEC_TS_CMD_SPONGE_WRITE_PARAM, &aod_rect[0], 10);
+			if (ret < 0)
+				input_err(true, &ts->client->dev, "%s: Failed to write offset\n", __func__);
+
+			ret = ts->sec_ts_i2c_write(ts, SEC_TS_CMD_SPONGE_NOTIFY_PACKET, NULL, 0);
+			if (ret < 0)
+				input_err(true, &ts->client->dev, "%s: Failed to send notify\n", __func__);
+		}
 
 		input_info(true, &ts->client->dev, "%s set lowpower flag:%d lowpower_data:%d\n", __func__,
 			ts->lowpower_flag, lowpower_data);
@@ -2045,11 +2191,34 @@ static void sec_ts_read_nv_work(struct work_struct *work)
 {
 	struct sec_ts_data *ts = container_of(work, struct sec_ts_data,
 						read_nv_work.work);
+#ifndef CONFIG_SEC_FACTORY
+	struct sec_ts_test_mode mode;	
+#endif
 
 	ts->nv = get_tsp_nvm_data(ts, SEC_TS_NVM_OFFSET_FAC_RESULT);
 	ts->cal_count = get_tsp_nvm_data(ts, SEC_TS_NVM_OFFSET_CAL_COUNT);
 
 	input_info(true, &ts->client->dev, "%s: fac_nv:%02X, cal_nv:%02X\n", __func__, ts->nv, ts->cal_count);
+#ifdef USE_HW_PARAMETER
+#ifndef CONFIG_SEC_FACTORY
+	/* run self-test */
+	disable_irq(ts->client->irq);
+	execute_selftest(ts);
+	enable_irq(ts->client->irq);
+
+	input_info(true, &ts->client->dev, "%s: %02X %02X %02X %02X\n",
+		__func__, ts->ito_test[0], ts->ito_test[1]
+		, ts->ito_test[2], ts->ito_test[3]);
+
+	/* run ambient read */
+	memset(&mode, 0x00, sizeof(struct sec_ts_test_mode));
+	mode.type = 3;//TYPE_AMBIENT_DATA;
+	mode.allnode = TEST_MODE_ALL_NODE;
+
+	sec_ts_read_raw_data(ts, &mode);
+#endif
+#endif
+
 }
 
 #ifdef USE_OPEN_CLOSE
@@ -2058,7 +2227,7 @@ static int sec_ts_input_open(struct input_dev *dev)
 	struct sec_ts_data *ts = input_get_drvdata(dev);
 	int ret;
 
-	input_info(true, &ts->client->dev, "%s\n", __func__);
+	input_info(true, &ts->client->dev, "%s, wet:%d, dive:%d\n", __func__, ts->wet_mode, ts->dive_mode);
 
 	if (ts->lowpower_status) {
 #ifdef USE_OPEN_POWER_RESET
@@ -2077,6 +2246,10 @@ static int sec_ts_input_open(struct input_dev *dev)
 			input_err(true, &ts->client->dev, "%s: Failed to start device\n", __func__);
 	}
 
+#ifdef TWO_LEVEL_GRIP_CONCEPT
+	sec_ts_set_grip_type(ts, ONLY_EDGE_HANDLER);	// because edge and dead zone will recover soon
+#endif
+
 	return 0;
 }
 
@@ -2084,7 +2257,7 @@ static void sec_ts_input_close(struct input_dev *dev)
 {
 	struct sec_ts_data *ts = input_get_drvdata(dev);
 
-	input_info(true, &ts->client->dev, "%s\n", __func__);
+	input_info(true, &ts->client->dev, "%s, wet:%d, dive:%d\n", __func__, ts->wet_mode, ts->dive_mode);
 
 	cancel_delayed_work(&ts->reset_work);
 
@@ -2103,7 +2276,9 @@ static int sec_ts_remove(struct i2c_client *client)
 	struct sec_ts_data *ts = i2c_get_clientdata(client);
 
 	input_info(true, &ts->client->dev, "%s\n", __func__);
-
+#ifdef USE_HW_PARAMETER
+	cancel_delayed_work(&ts->read_nv_work);
+#endif
 #ifdef CONFIG_HAS_EARLYSUSPEND
 	unregister_early_suspend(&ts->early_suspend);
 #endif
@@ -2295,9 +2470,10 @@ void trustedui_mode_on(void){
 	sec_ts_release_all_finger(tui_tsp_info);
 #ifdef CONFIG_EPEN_WACOM_W9018
 	epen_disable_mode(1);
-#endif
+
 	/* Release prohibited touch by wacom / grace concept */
 	set_spen_mode(0);
+#endif
 }
 
 void trustedui_mode_off(void){

@@ -827,7 +827,10 @@ int fts_fw_update_on_probe(struct fts_ts_info *info)
 
 				}
 */
-	if((lcdtype & LCD_ID2_MODEL_MASK) == MODEL_HEROPLUS){
+	if (strncmp(info->board->project_name, "PS-LTE", 6) == 0) {
+		tsp_debug_err(true, info->dev,"%s:FTS7: PS-LTE\n", __func__);
+		info->firmware_name = info->board->firmware_name;
+	} else if((lcdtype & LCD_ID2_MODEL_MASK) == MODEL_HEROPLUS){
 		tsp_debug_err(true, info->dev,"%s:FTS7AD56 - HEROPLUS\n", __func__);
 		tspid2 = gpio_get_value(info->board->tspid2);
 		if (tspid2)
@@ -850,6 +853,7 @@ int fts_fw_update_on_probe(struct fts_ts_info *info)
 	snprintf(fw_path, FTS_MAX_FW_PATH, "%s", info->firmware_name);
 	tsp_debug_info(true, info->dev, "%s: Load firmware : %s, Digital_rev : %d, TSP_ID2 : %d\n", __func__,
 		  fw_path, info->digital_rev, tspid2);
+
 	retval = request_firmware(&fw_entry, fw_path, info->dev);
 	if (retval) {
 		tsp_debug_err(true, info->dev,

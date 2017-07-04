@@ -32,7 +32,7 @@
 #include "s5p_mfc_data_struct.h"
 #include "s5p_mfc_debug.h"
 
-#define MFC_DRIVER_INFO		160106
+#define MFC_DRIVER_INFO		161116
 
 #define MFC_MAX_REF_BUFS	2
 #define MFC_FRAME_PLANES	2
@@ -172,7 +172,7 @@
 #define FW_SUPPORT_SKYPE(dev)		(IS_MFCv10X(dev) &&		\
 					(dev->fw.date >= 0x150901))
 #define FW_HAS_ROI_CONTROL(dev)		IS_MFCv10X(dev)
-#define FW_HAS_MATRIX_COEFFICIENTS(dev)	(IS_MFCv10X(dev) &&		\
+#define FW_HAS_VIDEO_SIGNAL_TYPE(dev)	(IS_MFCv10X(dev) &&		\
 					(dev->fw.date >= 0x151223))
 #define FW_HAS_SEI_INFO_FOR_HDR(dev)	(IS_MFCv10X(dev) &&		\
 					(dev->fw.date >= 0x160415))

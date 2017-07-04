@@ -53,6 +53,10 @@
 #include <soc/samsung/ect_parser.h>
 #include <soc/samsung/exynos-pmu.h>
 
+#if defined(CONFIG_KFAULT_AUTO_SUMMARY)
+#include <linux/sec_debug.h>
+#endif
+
 #define POWER_COEFF_15P		68 /* percore param */
 #define POWER_COEFF_7P		10 /* percore  param */
 
@@ -139,6 +143,14 @@ static struct workqueue_struct *dvfs_reset_wq;
  * CPUFREQ init notifier
  */
 static BLOCKING_NOTIFIER_HEAD(exynos_cpufreq_init_notifier_list);
+
+#if defined(CONFIG_KFAULT_AUTO_SUMMARY)
+static struct sec_debug_auto_comm_freq_info* auto_comm_cpufreq_info;
+void sec_debug_set_auto_comm_last_cpufreq_buf(struct sec_debug_auto_comm_freq_info* freq_info)
+{
+	auto_comm_cpufreq_info = freq_info;	
+}
+#endif
 
 int exynos_cpufreq_init_register_notifier(struct notifier_block *nb)
 {
@@ -991,7 +1003,9 @@ static int __cpuinit exynos_cpufreq_cpu_down_notifier(struct notifier_block *not
 				if (cpumask_weight(&mask) == 1)
 					pm_qos_update_request(&boot_max_qos[cluster], freq_min[cluster]);
 			}
+			break;
 		case CPU_DOWN_PREPARE_FROZEN:
+		case CPU_DOWN_LATE_PREPARE:
 			mutex_lock(&cpufreq_lock);
 			exynos_info[CL_ZERO]->blocked = true;
 			exynos_info[CL_ONE]->blocked = true;
@@ -2663,6 +2677,14 @@ static int exynos_mp_cpufreq_probe(struct platform_device *pdev)
 		}
 	}
 
+#if defined(CONFIG_KFAULT_AUTO_SUMMARY)
+	if(auto_comm_cpufreq_info) {
+		int offset = offsetof(struct cpufreq_freqs, new);
+		auto_comm_cpufreq_info[FREQ_INFO_CLD0].last_freq_info = virt_to_phys(freqs[CL_ZERO]) + offset;
+		auto_comm_cpufreq_info[FREQ_INFO_CLD0].last_freq_info = virt_to_phys(freqs[CL_ZERO]) + offset;
+	}
+#endif
+
 	return ret;
 
 err_init:
@@ -2754,6 +2776,13 @@ static int exynos_mp_cpufreq_remove(struct platform_device *pdev)
 #endif
 
 	cpufreq_unregister_driver(&exynos_driver);
+
+#if defined(CONFIG_KFAULT_AUTO_SUMMARY)
+	if(auto_comm_cpufreq_info) {
+		auto_comm_cpufreq_info[FREQ_INFO_CLD0].last_freq_info = 0;
+		auto_comm_cpufreq_info[FREQ_INFO_CLD0].last_freq_info = 0;
+	}
+#endif
 
 	return 0;
 }

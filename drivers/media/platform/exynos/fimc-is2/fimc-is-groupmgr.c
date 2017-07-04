@@ -1499,6 +1499,7 @@ int fimc_is_group_open(struct fimc_is_groupmgr *groupmgr,
 	clear_bit(FIMC_IS_GROUP_OTF_OUTPUT, &group->state);
 	clear_bit(FIMC_IS_GROUP_PIPE_INPUT, &group->state);
 	clear_bit(FIMC_IS_GROUP_SEMI_PIPE_INPUT, &group->state);
+	clear_bit(FIMC_IS_GROUP_UNMAP, &group->state);
 
 	group->prev = NULL;
 	group->next = NULL;

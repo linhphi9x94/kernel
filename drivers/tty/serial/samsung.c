@@ -542,7 +542,7 @@ s3c24xx_serial_rx_chars(int irq, void *dev_id)
  ignore_char:
 		continue;
 	}
-	
+
 #ifdef BT_UART_TRACE
 	if (ourport->port.line == BLUETOOTH_UART_PORT_LINE) {
 		uart_copy_local_buf(1, &ourport->local_buf, ch_str, ch_str_cnt);
@@ -1062,9 +1062,16 @@ static void s3c24xx_serial_set_termios(struct uart_port *port,
 
 	baud = uart_get_baud_rate(port, termios, old, MIN_BAUD, MAX_BAUD);
 #if defined(CONFIG_BCM4359)
+<<<<<<< HEAD
 		if (ourport->port.line == WIFI_UART_PORT_LINE)
 			baud = 460800;
 			printk("set baud as 460800!!\n");
+=======
+	if (ourport->port.line == WIFI_UART_PORT_LINE){
+		baud = 460800;
+		printk("set baud as 460800!!\n");
+	}
+>>>>>>> 7916c2a... samsung: DQE7 Kernel
 #endif
 	quot = s3c24xx_serial_getclk(ourport, baud, &clk, &clk_sel);
 	if (baud == 38400 && (port->flags & UPF_SPD_MASK) == UPF_SPD_CUST)

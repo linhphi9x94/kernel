@@ -126,6 +126,7 @@ struct mmc_data;
 struct dw_mci {
 	spinlock_t		lock;
 	void __iomem		*regs;
+	unsigned int		channel;
 
 	struct scatterlist	*sg;
 	struct sg_mapping_iter	sg_miter;
@@ -262,6 +263,8 @@ struct dw_mci_dma_ops {
 #define DW_MCI_QUIRK_HWACG_CTRL			BIT(8)
 /* Enables ultra low power mode */
 #define DW_MCI_QUIRK_ENABLE_ULP			BIT(9)
+/* Switching transfer */
+#define DW_MCI_SW_TRANS				BIT(11)
 
 /* Slot level quirks */
 /* This slot has no write protect */

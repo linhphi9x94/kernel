@@ -100,6 +100,8 @@ struct battery_data_t {
 	u32 sw_v_empty_recover_vol;	
 	u32 QResidual20;
 	u32 QResidual30;
+	u32 dpacc;
+	u32 dqacc;
 	u32 TempCo;
 	u32 Capacity;
 	u8	*type_str;
@@ -154,6 +156,7 @@ struct max77854_fuelgauge_data {
 
 	bool is_fuel_alerted;
 	struct wake_lock fuel_alert_wake_lock;
+	struct wake_lock fg_reset_wake_lock;
 
 	unsigned int capacity_old;	/* only for atomic calculation */
 	unsigned int capacity_max;	/* only for dynamic calculation */
@@ -183,6 +186,7 @@ struct max77854_fuelgauge_data {
 	int low_temp_limit;
 
 	bool auto_discharge_en;
+	bool bad_coffset;
 	u32 discharge_temp_threshold;
 	u32 discharge_volt_threshold;
 

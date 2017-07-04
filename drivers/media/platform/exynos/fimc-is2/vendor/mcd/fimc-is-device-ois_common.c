@@ -49,7 +49,7 @@
 #define FIMC_IS_OIS_DEV_NAME		"exynos-fimc-is-ois"
 #define OIS_GYRO_SCALE_FACTOR_IDG	175
 #define OIS_GYRO_SCALE_FACTOR_K2G	131
-#define OIS_I2C_RETRY_COUNT	1
+#define OIS_I2C_RETRY_COUNT	2
 
  bool not_crc_bin;
 
@@ -506,6 +506,7 @@ void fimc_is_ois_offset_test(struct fimc_is_core *core, long *raw_data_x, long *
 	sum = sum * 10 / avg_count;
 	*raw_data_x = sum * 1000 / scale_factor / 10;
 
+	sum = 0;
 	retries = avg_count;
 	for (i = 0; i < retries; retries--) {
 		fimc_is_ois_i2c_read(core->client1, 0x024A, &val);

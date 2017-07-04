@@ -847,15 +847,7 @@ static int wacom_check_emr_prox(struct wacom_g5_callbacks *cb)
 	return wac->pen_prox;
 }
 
-static int wacom_i2c_remove(struct i2c_client *client)
-{
-	struct wacom_i2c *wac_i2c = i2c_get_clientdata(client);
-	free_irq(client->irq, wac_i2c);
-	input_unregister_device(wac_i2c->input_dev);
-	kfree(wac_i2c);
 
-	return 0;
-}
 #ifdef CONFIG_HAS_EARLYSUSPEND
 static void wacom_i2c_early_suspend(struct early_suspend *h)
 {
@@ -1699,6 +1691,9 @@ static int wacom_open_test(struct wacom_i2c *wac_i2c)
 		return -2;
 	}
 
+	if(retry <= 0)
+		return -1;
+
 	return 0;
 }
 
@@ -1708,48 +1703,36 @@ struct device_attribute *attr,
 {
 	struct wacom_i2c *wac_i2c = dev_get_drvdata(dev);
 	struct i2c_client *client = wac_i2c->client;
-	int retry = 3;
+	int retry = 2;
 	int ret,module_ver =1;
 
 	mutex_lock(&wac_i2c->lock);
 
 	input_info(true, &client->dev, "%s\n", __func__);
 	wacom_enable_irq(wac_i2c, false);
+	wacom_enable_pdct_irq(wac_i2c, false);
 
-	if (false == wac_i2c->power_enable) {
-		wac_i2c->pdata->resume_platform_hw();
-		input_info(true, &client->dev, "pwr on\n");
-		msleep(200);
-	}
-#ifdef WACOM_USE_SURVEY_MODE
-	if(wac_i2c->survey_mode == true) {
-		wacom_i2c_exit_survey_mode(wac_i2c);
-		wac_i2c->survey_mode = false;
-	}
-#endif
 	while (retry--) {
 		ret = wacom_open_test(wac_i2c);
 		if (!ret)
 			break;
 
 		input_err(true, &client->dev, "failed. retry %d\n", retry);
-		wac_i2c->pdata->reset_platform_hw();
+
+		wacom_suspend_hw();
+		msleep(120);
+		wacom_resume_hw();
+
 		if (ret == -1) {
-			msleep(200);
+			msleep(150);
 			continue;
 		} else if (ret == -2) {
 			break;
 		}
 	}
-#ifdef WACOM_USE_SURVEY_MODE
-	if(wac_i2c->survey_mode == true) {
-		if (wac_i2c->battery_saving_mode)
-			wacom_i2c_set_survey_mode(wac_i2c, EPEN_SURVEY_MODE_GARAGE_ONLY);
-		else
-			wacom_i2c_set_survey_mode(wac_i2c, EPEN_SURVEY_MODE_GARAGE_AOP);
-	}
-#endif
+
 	wacom_enable_irq(wac_i2c, true);
+	wacom_enable_pdct_irq(wac_i2c, true);
 
 	if (false == wac_i2c->power_enable) {
 		wac_i2c->pdata->suspend_platform_hw();
@@ -2148,6 +2131,40 @@ static struct attribute_group epen_attr_group = {
 	.attrs = epen_attributes,
 };
 
+static int wacom_i2c_remove(struct i2c_client *client)
+{
+	struct wacom_i2c *wac_i2c = i2c_get_clientdata(client);
+
+	input_info(true, &wac_i2c->client->dev, "%s called!\n", __func__);
+
+	input_unregister_device(wac_i2c->input_dev);
+	wacom_power_off(wac_i2c);
+
+	disable_irq(wac_i2c->irq);
+	disable_irq(wac_i2c->irq_pdct);
+	free_irq(wac_i2c->irq, wac_i2c);
+	free_irq(wac_i2c->irq_pdct, wac_i2c);
+
+	wac_i2c->pdata->suspend_platform_hw();
+
+	destroy_workqueue(wac_i2c->fw_wq);
+	wake_lock_destroy(&wac_i2c->det_wakelock);
+	wake_lock_destroy(&wac_i2c->fw_wakelock);
+	mutex_destroy(&wac_i2c->irq_lock);
+	mutex_destroy(&wac_i2c->update_lock);
+	mutex_destroy(&wac_i2c->lock);
+
+	sysfs_delete_link(&wac_i2c->dev->kobj, &wac_i2c->input_dev->dev.kobj, "input");
+	sysfs_remove_group(&wac_i2c->dev->kobj, &epen_attr_group);
+	sec_device_destroy(wac_i2c->dev->devt);
+
+	wac_i2c->input_dev = NULL;
+	wac_i2c = NULL;
+	kfree(wac_i2c);
+
+	return 0;
+}
+
 static void wacom_init_abs_params(struct wacom_i2c *wac_i2c)
 {
 	int min_x, min_y;
@@ -2473,8 +2490,11 @@ static int wacom_i2c_probe(struct i2c_client *client,
 	/* Control AOP mode on & off */
 	wac_i2c->function_set = 0x00 | EPEN_SETMODE_GARAGE;	// EPEN_SETMODE_AOP : remove 20160620
 	wac_i2c->function_result = 0x01;
-	wac_i2c->battery_saving_mode = 0;	// it needs
-	// Consider about factory, it may be need to as default 1
+#ifdef CONFIG_SEC_FACTORY
+	wac_i2c->battery_saving_mode = 0;
+#else
+	wac_i2c->battery_saving_mode = 1;
+#endif
 	wac_i2c->reset_flag = false;
 #endif
 	msleep(100);

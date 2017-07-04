@@ -318,13 +318,7 @@ bool fimc_is_sec_check_cal_crc32(char *buf, int id)
 	u32 address_boundary;
 	bool crc32_temp, crc32_header_temp;
 	struct fimc_is_from_info *finfo = NULL;
-	struct fimc_is_companion_retention *ret_data;
-	struct fimc_is_core *core;
-	struct fimc_is_vender_specific *specific;
 
-	core = (struct fimc_is_core *)dev_get_drvdata(fimc_is_dev);
-	specific = core->vender.private_data;
-	ret_data = &specific->retention_data;
 	buf32 = (u32 *)buf;
 
 	printk(KERN_INFO "+++ %s\n", __func__);
@@ -775,7 +769,6 @@ ssize_t read_data_from_file(char *name, char *buf, size_t count, loff_t *pos)
 {
 	struct file *fp;
 	mm_segment_t old_fs;
-	ssize_t tx;
 	int fd;
 
 	old_fs = get_fs();
@@ -793,7 +786,7 @@ ssize_t read_data_from_file(char *name, char *buf, size_t count, loff_t *pos)
 	}
 	fp = fget(fd);
 	if (fp) {
-		tx = vfs_read(fp, buf, count, pos);
+		vfs_read(fp, buf, count, pos);
 		fput(fp);
 	}
 	sys_close(fd);
@@ -1689,8 +1682,10 @@ crc_retry:
 		finfo->project_name[FIMC_IS_PROJECT_NAME_SIZE] = '\0';
 		finfo->header_section_crc_addr = EEP_CHECKSUM_HEADER_ADDR_FRONT;
 
+#if defined(EEP_HEADER_SENSOR_ID_ADDR)
 		memcpy(finfo->from_sensor_id, &buf[EEP_HEADER_SENSOR_ID_ADDR], FIMC_IS_SENSOR_ID_SIZE);
 		finfo->from_sensor_id[FIMC_IS_SENSOR_ID_SIZE] = '\0';
+#endif
 
 #if defined(EEP_HEADER_OEM_START_ADDR_FRONT)
 		/* OEM Data : Module/Manufacturer Information */
@@ -2510,7 +2505,12 @@ int fimc_is_sec_write_fw(struct fimc_is_core *core, struct device *dev)
 		goto err;
 	}
 #ifdef CONFIG_COMPANION_USE
-	fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE);
+	if (specific->rear_sensor_id == SENSOR_NAME_S5K2L1)
+		fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE_INPU);
+	else if (specific->rear_sensor_id == SENSOR_NAME_IMX260)
+		fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE_INPD);
+	else
+		fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE);
 #endif
 
 	/* Off to reset FROM operation. Without this routine, spi read does not work. */
@@ -2532,7 +2532,12 @@ int fimc_is_sec_write_fw(struct fimc_is_core *core, struct device *dev)
 
 err:
 #ifdef CONFIG_COMPANION_USE
-	fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE);
+	if (specific->rear_sensor_id == SENSOR_NAME_S5K2L1)
+		fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE_INPU);
+	else if (specific->rear_sensor_id == SENSOR_NAME_IMX260)
+		fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE_INPD);
+	else
+		fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE);
 #endif
 
 	if (!specific->running_rear_camera)
@@ -2721,8 +2726,16 @@ crc_retry:
 
 	if (specific->use_module_check) {
 		if (sysfs_finfo.header_ver[10] == FIMC_IS_LATEST_FROM_VERSION_M
+#if defined(CAMERA_MODULE_CORE_CS_VERSION) && defined(CAMERA_MODULE_CORE_CS_VERSION2)
+		    && (sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION
+			|| sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION2)
+#else
 #if defined(CAMERA_MODULE_CORE_CS_VERSION)
 		    && sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION
+#endif
+#if defined(CAMERA_MODULE_CORE_CS_VERSION2)
+		    && sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION2
+#endif
 #endif
 		) {
 			is_final_cam_module = true;
@@ -3040,8 +3053,16 @@ crc_retry:
 
 	if (specific->use_module_check) {
 		if (sysfs_finfo.header_ver[10] == FIMC_IS_LATEST_FROM_VERSION_M
+#if defined(CAMERA_MODULE_CORE_CS_VERSION) && defined(CAMERA_MODULE_CORE_CS_VERSION2)
+		    && (sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION
+			|| sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION2)
+#else
 #if defined(CAMERA_MODULE_CORE_CS_VERSION)
 		    && sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION
+#endif
+#if defined(CAMERA_MODULE_CORE_CS_VERSION2)
+		    && sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION2
+#endif
 #endif
 		) {
 			is_final_cam_module = true;
@@ -3365,8 +3386,16 @@ crc_retry:
 
 	if (specific->use_module_check) {
 		if (sysfs_finfo.header_ver[10] == FIMC_IS_LATEST_FROM_VERSION_M
+#if defined(CAMERA_MODULE_CORE_CS_VERSION) && defined(CAMERA_MODULE_CORE_CS_VERSION2)
+		    && (sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION
+			|| sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION2)
+#else
 #if defined(CAMERA_MODULE_CORE_CS_VERSION)
 		    && sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION
+#endif
+#if defined(CAMERA_MODULE_CORE_CS_VERSION2)
+		    && sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION2
+#endif
 #endif
 		) {
 			is_final_cam_module = true;
@@ -3661,8 +3690,16 @@ crc_retry:
 
 	if (specific->use_module_check) {
 		if (sysfs_finfo.header_ver[10] == FIMC_IS_LATEST_FROM_VERSION_M
+#if defined(CAMERA_MODULE_CORE_CS_VERSION) && defined(CAMERA_MODULE_CORE_CS_VERSION2)
+		    && (sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION
+			|| sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION2)
+#else
 #if defined(CAMERA_MODULE_CORE_CS_VERSION)
 		    && sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION
+#endif
+#if defined(CAMERA_MODULE_CORE_CS_VERSION2)
+		    && sysfs_finfo.header_ver[0] == CAMERA_MODULE_CORE_CS_VERSION2
+#endif
 #endif
 		) {
 			is_final_cam_module = true;
@@ -4177,16 +4214,23 @@ int fimc_is_sec_fw_find(struct fimc_is_core *core)
 		snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_4H5), "%s", FIMC_IS_FW_4H5);
 		snprintf(sysfs_finfo.load_setfile_name, sizeof(FIMC_IS_4H5_SETF), "%s", FIMC_IS_4H5_SETF);
 		specific->rear_sensor_id = SENSOR_NAME_S5K4H5;
+        } else if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_4H5YC_P)) {
+                snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_4H5), "%s", FIMC_IS_FW_4H5);
+                snprintf(sysfs_finfo.load_setfile_name, sizeof(FIMC_IS_4H5_SETF), "%s", FIMC_IS_4H5_SETF);
+                specific->rear_sensor_id = SENSOR_NAME_S5K4H5YC_FF;
 	} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_IMX240_A) ||
 	           fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_IMX240_B) ||
 	           fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_IMX240_C)) {
 		snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_IMX240), "%s", FIMC_IS_FW_IMX240);
 		snprintf(sysfs_finfo.load_setfile_name, sizeof(FIMC_IS_IMX240_SETF), "%s", FIMC_IS_IMX240_SETF);
 		specific->rear_sensor_id = SENSOR_NAME_IMX240;
-	} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_IMX260_C) ||
-		fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_IMX260_D)) {
+	} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_IMX260_C)) {
 		snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_IMX260), "%s", FIMC_IS_FW_IMX260);
 		snprintf(sysfs_finfo.load_setfile_name, sizeof(FIMC_IS_IMX260_SETF), "%s", FIMC_IS_IMX260_SETF);
+		specific->rear_sensor_id = SENSOR_NAME_IMX260;
+	} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_IMX260_D)) {
+		snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_IMX260_D), "%s", FIMC_IS_FW_IMX260_D);
+		snprintf(sysfs_finfo.load_setfile_name, sizeof(FIMC_IS_IMX260_SETF_D), "%s", FIMC_IS_IMX260_SETF_D);
 		specific->rear_sensor_id = SENSOR_NAME_IMX260;
 	} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_IMX228)) {
 		snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_IMX228), "%s", FIMC_IS_FW_IMX228);
@@ -4196,10 +4240,13 @@ int fimc_is_sec_fw_find(struct fimc_is_core *core)
 		snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_2T2_EVT1), "%s", FIMC_IS_FW_2T2_EVT1);
 		snprintf(sysfs_finfo.load_setfile_name, sizeof(FIMC_IS_2T2_SETF), "%s", FIMC_IS_2T2_SETF);
 		specific->rear_sensor_id = SENSOR_NAME_S5K2T2;
-	} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2L1_C) ||
-		fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2L1_D)) {
+	} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2L1_C)) {
 		snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_2L1), "%s", FIMC_IS_FW_2L1);
 		snprintf(sysfs_finfo.load_setfile_name, sizeof(FIMC_IS_2L1_SETF), "%s", FIMC_IS_2L1_SETF);
+		specific->rear_sensor_id = SENSOR_NAME_S5K2L1;
+	} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_2L1_D)) {
+		snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_2L1_D), "%s", FIMC_IS_FW_2L1_D);
+		snprintf(sysfs_finfo.load_setfile_name, sizeof(FIMC_IS_2L1_SETF_D), "%s", FIMC_IS_2L1_SETF_D);
 		specific->rear_sensor_id = SENSOR_NAME_S5K2L1;
 	} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.header_ver, FW_4E6)) {
 		snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_4E6), "%s", FIMC_IS_FW_4E6);
@@ -4228,8 +4275,10 @@ int fimc_is_sec_fw_find(struct fimc_is_core *core)
 			/* 2P2 */
 			snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_2P2), "%s", FIMC_IS_FW_2P2);
 			snprintf(sysfs_finfo.load_setfile_name, sizeof(FIMC_IS_2P2_SETF), "%s", FIMC_IS_2P2_SETF);
-		} else if (sensor_id == SENSOR_NAME_S5K4H5) {
-			/* 4H5 */
+		} else if (sensor_id == SENSOR_NAME_S5K4H5 ||
+			   sensor_id == SENSOR_NAME_S5K4H5YC ||
+			   sensor_id == SENSOR_NAME_S5K4H5YC_FF) {
+			/* 4H5 or 4H5YC or 4H5YC_FF*/
 			snprintf(sysfs_finfo.load_fw_name, sizeof(FIMC_IS_FW_4H5), "%s", FIMC_IS_FW_4H5);
 			snprintf(sysfs_finfo.load_setfile_name, sizeof(FIMC_IS_4H5_SETF), "%s", FIMC_IS_4H5_SETF);
 		} else if ( sensor_id == SENSOR_NAME_S5K2P3 ) {
@@ -4501,7 +4550,7 @@ int fimc_is_sec_fw_sel(struct fimc_is_core *core, struct device *dev, bool heade
 	char dump_fw_path[100];
 	char dump_fw_version[FIMC_IS_HEADER_VER_SIZE + 1] = {0, };
 	char phone_fw_version[FIMC_IS_HEADER_VER_SIZE + 1] = {0, };
-#ifdef CAMERA_MODULE_DUALIZE
+#if defined(CAMERA_MODULE_DUALIZE) && defined(CAMERA_MODULE_AVAILABLE_DUMP_VERSION)
 	int from_fw_revision = 0;
 	int dump_fw_revision = 0;
 	int phone_fw_revision = 0;
@@ -4823,7 +4872,12 @@ read_phone_fw_exit:
 exit:
 #ifdef CONFIG_COMPANION_USE
 	/* Set spi pin to out */
-	fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE);
+	if (specific->rear_sensor_id == SENSOR_NAME_S5K2L1)
+		fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE_INPU);
+	else if (specific->rear_sensor_id == SENSOR_NAME_IMX260)
+		fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE_INPD);
+	else
+		fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE);
 #endif
 	if (is_ldo_enabled && !specific->running_rear_camera)
 		fimc_is_sec_rom_power_off(core, SENSOR_POSITION_REAR);
@@ -4893,13 +4947,18 @@ int fimc_is_sec_concord_fw_sel(struct fimc_is_core *core, struct device *dev)
 			snprintf(sysfs_finfo.load_c1_fw_name, sizeof(FIMC_IS_FW_COMPANION_IMX240_EVT1), "%s", FIMC_IS_FW_COMPANION_IMX240_EVT1);
 			snprintf(sysfs_finfo.load_c1_mastersetf_name, sizeof(FIMC_IS_COMPANION_IMX240_MASTER_SETF), "%s", FIMC_IS_COMPANION_IMX240_MASTER_SETF);
 			snprintf(sysfs_finfo.load_c1_modesetf_name, sizeof(FIMC_IS_COMPANION_IMX240_MODE_SETF), "%s", FIMC_IS_COMPANION_IMX240_MODE_SETF);
-		} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_IMX260_C) ||
-			fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_IMX260_D)) {
+		} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_IMX260_C)) {
 			snprintf(c1_fw_path, sizeof(c1_fw_path), "%s%s",
 				FIMC_IS_FW_PATH, FIMC_IS_FW_COMPANION_IMX260);
 			snprintf(sysfs_finfo.load_c1_fw_name, sizeof(FIMC_IS_FW_COMPANION_IMX260), "%s", FIMC_IS_FW_COMPANION_IMX260);
 			snprintf(sysfs_finfo.load_c1_mastersetf_name, sizeof(FIMC_IS_COMPANION_IMX260_MASTER_SETF), "%s", FIMC_IS_COMPANION_IMX260_MASTER_SETF);
 			snprintf(sysfs_finfo.load_c1_modesetf_name, sizeof(FIMC_IS_COMPANION_IMX260_MODE_SETF), "%s", FIMC_IS_COMPANION_IMX260_MODE_SETF);
+		}  else if (fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_IMX260_D)) {
+			snprintf(c1_fw_path, sizeof(c1_fw_path), "%s%s",
+				FIMC_IS_FW_PATH, FIMC_IS_FW_COMPANION_IMX260_D);
+			snprintf(sysfs_finfo.load_c1_fw_name, sizeof(FIMC_IS_FW_COMPANION_IMX260_D), "%s", FIMC_IS_FW_COMPANION_IMX260_D);
+			snprintf(sysfs_finfo.load_c1_mastersetf_name, sizeof(FIMC_IS_COMPANION_IMX260_MASTER_SETF_D), "%s", FIMC_IS_COMPANION_IMX260_MASTER_SETF_D);
+			snprintf(sysfs_finfo.load_c1_modesetf_name, sizeof(FIMC_IS_COMPANION_IMX260_MODE_SETF_D), "%s", FIMC_IS_COMPANION_IMX260_MODE_SETF_D);
 		} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_2P2_12M)) {
 			snprintf(c1_fw_path, sizeof(c1_fw_path), "%s%s",
 				FIMC_IS_FW_PATH, FIMC_IS_FW_COMPANION_2P2_12M_EVT1);
@@ -4912,13 +4971,18 @@ int fimc_is_sec_concord_fw_sel(struct fimc_is_core *core, struct device *dev)
 			snprintf(sysfs_finfo.load_c1_fw_name, sizeof(FIMC_IS_FW_COMPANION_2T2_EVT1), "%s", FIMC_IS_FW_COMPANION_2T2_EVT1);
 			snprintf(sysfs_finfo.load_c1_mastersetf_name, sizeof(FIMC_IS_COMPANION_2T2_MASTER_SETF), "%s", FIMC_IS_COMPANION_2T2_MASTER_SETF);
 			snprintf(sysfs_finfo.load_c1_modesetf_name, sizeof(FIMC_IS_COMPANION_2T2_MODE_SETF), "%s", FIMC_IS_COMPANION_2T2_MODE_SETF);
-		} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_2L1_C) ||
-			fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_2L1_D)) {
+		} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_2L1_C)) {
 			snprintf(c1_fw_path, sizeof(c1_fw_path), "%s%s",
 				FIMC_IS_FW_PATH, FIMC_IS_FW_COMPANION_2L1);
 			snprintf(sysfs_finfo.load_c1_fw_name, sizeof(FIMC_IS_FW_COMPANION_2L1), "%s", FIMC_IS_FW_COMPANION_2L1);
 			snprintf(sysfs_finfo.load_c1_mastersetf_name, sizeof(FIMC_IS_COMPANION_2L1_MASTER_SETF), "%s", FIMC_IS_COMPANION_2L1_MASTER_SETF);
 			snprintf(sysfs_finfo.load_c1_modesetf_name, sizeof(FIMC_IS_COMPANION_2L1_MODE_SETF), "%s", FIMC_IS_COMPANION_2L1_MODE_SETF);
+		} else if (fimc_is_sec_fw_module_compare(sysfs_finfo.concord_header_ver, FW_2L1_D)) {
+			snprintf(c1_fw_path, sizeof(c1_fw_path), "%s%s",
+				FIMC_IS_FW_PATH, FIMC_IS_FW_COMPANION_2L1_D);
+			snprintf(sysfs_finfo.load_c1_fw_name, sizeof(FIMC_IS_FW_COMPANION_2L1_D), "%s", FIMC_IS_FW_COMPANION_2L1_D);
+			snprintf(sysfs_finfo.load_c1_mastersetf_name, sizeof(FIMC_IS_COMPANION_2L1_MASTER_SETF_D), "%s", FIMC_IS_COMPANION_2L1_MASTER_SETF_D);
+			snprintf(sysfs_finfo.load_c1_modesetf_name, sizeof(FIMC_IS_COMPANION_2L1_MODE_SETF_D), "%s", FIMC_IS_COMPANION_2L1_MODE_SETF_D);
 		} else {
 			err("Companion FW selection failed! Default FW will be used");
 			sensor_id = specific->rear_sensor_id;
@@ -5155,7 +5219,12 @@ read_phone_fw_exit:
 				}
 
 				/* Set spi pin to out */
-				fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE);
+				if (specific->rear_sensor_id == SENSOR_NAME_S5K2L1)
+					fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE_INPU);
+				else if (specific->rear_sensor_id == SENSOR_NAME_IMX260)
+					fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE_INPD);
+				else
+					fimc_is_spi_s_pin(spi, SPI_PIN_STATE_IDLE);
 
 				if (is_ldo_enabled && !specific->running_rear_camera)
 					fimc_is_sec_rom_power_off(core, SENSOR_POSITION_REAR);

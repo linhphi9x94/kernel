@@ -2068,6 +2068,7 @@ static int arizona_hpdet_moisture_reading(struct arizona_extcon_info *info,
 			info->moisture_count = 0;
 		}
 
+		info->arizona->moisture_detected = true;
 		dev_warn(arizona->dev,
 			 "Jack detection due to moisture, ignoring\n");
 		arizona_jds_set_state(info, NULL);

@@ -997,7 +997,7 @@ menu "Control Flow Protection"
 
 config RKP_CFP
 	bool "Hyperdrive ROP protection"
-	# depends on TIMA_RKP
+	depends on TIMA_RKP
 	# Disable RKP for now, keep getting TIMA_RKP_VMM_PANIC when doing sleep.S code for saving/restoring x17.
 	default n
 	help
@@ -1006,6 +1006,7 @@ config RKP_CFP
 
 config RKP_CFP_ROPP
 	bool "Hyperdrive: encrypt return-addresses"
+	depends on TIMA_RKP
 	select RKP_CFP
 	select RKP_CFP_FIX_SMC_BUG
 	default n
@@ -1035,6 +1036,7 @@ endchoice
 
 config RKP_CFP_JOPP
 	bool "Just to function entry only, Restrict BLR jump target to a valid function entry point and no br in C code"
+	depends on TIMA_RKP
 	select RKP_CFP
 	default n
 

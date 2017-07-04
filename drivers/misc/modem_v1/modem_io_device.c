@@ -1084,7 +1084,9 @@ static int vnet_stop(struct net_device *ndev)
 			ld->terminate_comm(ld, iod);
 	}
 
+	spin_lock(&msd->active_list_lock);
 	list_del(&iod->node_ndev);
+	spin_unlock(&msd->active_list_lock);
 	netif_stop_queue(ndev);
 
 	mif_err("%s (opened %d) by %s\n",

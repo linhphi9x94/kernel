@@ -331,6 +331,7 @@ static int sec_multi_chg_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CHARGE_OTG_CONTROL:
 	case POWER_SUPPLY_PROP_CHARGE_UNO_CONTROL:
 	case POWER_SUPPLY_PROP_CHARGE_CONTROL_LIMIT_MAX:
+	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
 		psy_do_property(charger->pdata->main_charger_name, get, psp, value);
 		val->intval = value.intval;
 		break;

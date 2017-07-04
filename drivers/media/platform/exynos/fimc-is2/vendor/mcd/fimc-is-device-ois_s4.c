@@ -989,6 +989,7 @@ void fimc_is_ois_check_extclk(struct fimc_is_core *core)
 		ret = fimc_is_ois_i2c_write(core->client1, 0x0003, 0x01);
 		if (ret) {
 			err("i2c write fail\n");
+			msleep(200);
 			goto exit;
 		}
 		msleep(200);
@@ -998,6 +999,7 @@ void fimc_is_ois_check_extclk(struct fimc_is_core *core)
 		ret |= fimc_is_ois_i2c_write(core->client1 ,0x000E, 0x06);
 		if (ret) {
 			err("i2c write fail\n");
+			msleep(50);
 			goto exit;
 		}
 		msleep(50);

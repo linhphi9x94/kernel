@@ -1086,6 +1086,11 @@ int set_notify_disable(struct usb_notify_dev *udev, int disable)
 	struct otg_notify *n = udev->o_notify;
 	struct usb_notify *u_notify = (struct usb_notify *)(n->u_notify);
 
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+	unsigned long usb_notify;
+	int usb_notify_state;
+#endif
+
 	if (!n->disable_control) {
 		pr_err("%s disable_control is not supported\n", __func__);
 		goto skip;
@@ -1111,6 +1116,12 @@ int set_notify_disable(struct usb_notify_dev *udev, int disable)
 			send_otg_notify(n, VIRT_EVENT(u_notify->c_type), 0);
 		}
 		send_otg_notify(n, NOTIFY_EVENT_ALL_DISABLE, 1);
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+		usb_notify = NOTIFY_EVENT_ALL_DISABLE;
+		usb_notify_state = NOTIFY_EVENT_BLOCKED;
+		store_usblog_notify(NOTIFY_EVENT,
+			(void *)&usb_notify, (void *)&usb_notify_state);
+#endif
 		break;
 	case NOTIFY_BLOCK_TYPE_HOST:
 		if (is_host_cable_enable(n)) {
@@ -1128,6 +1139,13 @@ int set_notify_disable(struct usb_notify_dev *udev, int disable)
 		}
 
 		send_otg_notify(n, NOTIFY_EVENT_HOST_DISABLE, 1);
+
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+		usb_notify = NOTIFY_EVENT_HOST_DISABLE;
+		usb_notify_state = NOTIFY_EVENT_BLOCKED;
+		store_usblog_notify(NOTIFY_EVENT,
+			(void *)&usb_notify, (void *)&usb_notify_state);
+#endif
 
 		if (!is_client_cable_block(n))
 			goto skip;
@@ -1150,6 +1168,13 @@ int set_notify_disable(struct usb_notify_dev *udev, int disable)
 
 		send_otg_notify(n, NOTIFY_EVENT_CLIENT_DISABLE, 1);
 
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+		usb_notify = NOTIFY_EVENT_CLIENT_DISABLE;
+		usb_notify_state = NOTIFY_EVENT_BLOCKED;
+		store_usblog_notify(NOTIFY_EVENT,
+			(void *)&usb_notify, (void *)&usb_notify_state);
+#endif
+
 		if (!is_host_cable_block(n))
 			goto skip;
 
@@ -1168,6 +1193,12 @@ int set_notify_disable(struct usb_notify_dev *udev, int disable)
 		break;
 	case NOTIFY_BLOCK_TYPE_NONE:
 		send_otg_notify(n, NOTIFY_EVENT_ALL_DISABLE, 0);
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+		usb_notify = NOTIFY_EVENT_ALL_DISABLE;
+		usb_notify_state = NOTIFY_EVENT_DISABLED;
+		store_usblog_notify(NOTIFY_EVENT,
+			(void *)&usb_notify, (void *)&usb_notify_state);
+#endif
 		if (!is_host_cable_block(n) && !is_client_cable_block(n))
 			goto skip;
 

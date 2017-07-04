@@ -27,6 +27,18 @@
 	#address-cells = <2>;
 	#size-cells = <1>;
 
+	arm-pmu {
+		compatible = "arm,armv8-pmuv3";
+		interrupts = <0 25 4>,
+			     <0 26 4>,
+			     <0 27 4>,
+			     <0 28 4>,
+			     <0 40 4>,
+			     <0 41 4>,
+			     <0 42 4>,
+			     <0 43 4>;
+	};
+
 	aliases {
 		pinctrl0 = &pinctrl_0;
 		pinctrl1 = &pinctrl_1;
@@ -301,8 +313,8 @@
 		 *	        sicd	      sicd_cpd      sicd_aud	aftr          stop
 		 *	        dstop	      lpd           lpa		sleep
 		 */
-		wakeup_mask =  <0x400001C0>, <0x400001C0>, <0x400001C0>, <0x400001C0>,	<0x0>,
-			       <0x0>,	     <0x0>, 	   <0x400001C0>, <0x50077E7E>;
+		wakeup_mask =  <0x400001E0>, <0x400001E0>, <0x400001E0>, <0x400001E0>,	<0x0>,
+			       <0x0>,	     <0x0>, 	   <0x400001E0>, <0x50077E7E>;
 		wakeup_mask2 = <0x0>,	     <0x0>, 	   <0x0>, 	 <0x0>,		<0x0>,
 			       <0x0>, 	     <0x0>, 	   <0xFFFF00FF>, <0xFFFF00FF>;
 		wakeup_mask3 = <0x0>,	     <0x0>, 	   <0x0>,	 <0x0>,		<0x0>,
@@ -1224,6 +1236,7 @@
 			#dma-channels = <8>;
 			#dma-requests = <16>;
 			#dma-mcode-addr = <0x03022000>;
+			#dma-multi-irq = <1>;
 			arm,primecell-periphid = <0x341330>;
 			samsung,lpass-subip;
 			status = "ok";
@@ -1409,7 +1422,7 @@
 		samsung,syscon-phandle = <&pmu_system_controller>;
 		pinctrl-names = "default", "clkreq_output";
 		pinctrl-0 = <&pcie0_clkreq &pcie0_perst &pcie_wake &cfg_wlanen &wlan_host_wake>;
-		pinctrl-1 = <&pcie0_clkreq_output &pcie0_perst &pcie_wake &cfg_wlanen &wlan_host_wake>;
+		pinctrl-1 = <&pcie0_perst &pcie_wake &cfg_wlanen &wlan_host_wake>;
 		#address-cells = <3>;
 		#size-cells = <2>;
 		device_type = "pci";
@@ -1446,7 +1459,7 @@
 		samsung,syscon-phandle = <&pmu_system_controller>;
 		pinctrl-names = "default", "clkreq_output";
 		pinctrl-0 = <&pcie1_clkreq &pcie1_perst>;
-		pinctrl-1 = <&pcie1_clkreq_output &pcie1_perst>;
+		pinctrl-1 = <&pcie1_perst>;
 		#address-cells = <3>;
 		#size-cells = <2>;
 		device_type = "pci";
@@ -2758,6 +2771,20 @@
 		#address-cells = <2>;
 		#size-cells = <1>;
 		ranges;
+	};
+
+	smc_info: mcinfo@10800000 {
+		compatible = "samsung,exynos-mcinfo";
+		reg =	<0x0 0x1080004C 0x4>,
+			<0x0 0x1090004C 0x4>,
+			<0x0 0x10A0004C 0x4>,
+			<0x0 0x10B0004C 0x4>;
+		bit_field = <20 3>;
+		/* start bit, width */
+		basecnt = <4>;
+		irqcnt = <0>;
+
+		interrupts = <0 385 0>, <0 393 0>, <0 401 0>, <0 409 0>;
 	};
 
 	devfreq_0: devfreq_mif@17000010 {

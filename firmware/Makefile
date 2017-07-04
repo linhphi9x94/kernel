@@ -148,8 +148,10 @@ fw-shipped-$(CONFIG_EPEN_WACOM_W9018) += epen/W9018_GRACE.bin
 TSPFIRMWARE_DIRECTORY = firmware/tsp_stm
 ifeq ($(shell test -d $(TSPFIRMWARE_DIRECTORY) && echo yes),yes)
 fw-shipped-$(CONFIG_TOUCHSCREEN_FTS) += tsp_stm/stm_z1.fw tsp_stm/stm_z2a.fw
-fw-shipped-$(CONFIG_TOUCHSCREEN_FTS7) += tsp_stm/hero2i.fw tsp_stm/hero2a.fw tsp_stm/hero_e.fw \
-						tsp_stm/stm_vjfa.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_FTS7) += tsp_stm/hero2i.fw tsp_stm/hero2a.fw tsp_stm/hero_e.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_FTS7_VALLEY) += tsp_stm/stm_vjfa.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_FTS7_HAECHI) += tsp_stm/fts7bd50_haechi.fw
+fw-shipped-$(CONFIG_TOUCHSCREEN_FTS8) += tsp_stm/fts9cd56_of.fw
 else
 $(warning '$(TSPFIRMWARE_DIRECTORY)' directory dose not exist)
 endif
@@ -187,6 +189,7 @@ $(warning '$(TSPFIRMWARE_DIRECTORY)' directory dose not exist)
 endif
 
 fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH_MBR31X5) += cypress/cy8cmbr3145_grace.fw
+fw-shipped-$(CONFIG_KEYBOARD_CYPRESS_TOUCH_MBR31X5) += cypress/cy8cmbr3145_grace.fw cypress/cy8cmbr3145_hero.fw
 fw-shipped-$(CONFIG_KEYBOARD_ABOV_FT16XX_TOUCH) += abov/abov_hero.fw abov/abov_hero2.fw abov/abov_valley.fw
 fw-shipped-$(CONFIG_KEYBOARD_ABOV_FT16XX_TOUCH_VALLEY) += abov/abov_valley.fw abov/abov_valley_sub.fw \
 								abov/abov_vjf.fw abov/abov_vjf_sub.fw

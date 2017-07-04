@@ -186,6 +186,7 @@ int sec_ts_check_firmware_version(struct sec_ts_data *ts, const u8 *fw_info)
 		return -1;
 	}
 
+	/* check f/w version */
 	for (i = 0; i < 2; i++) {
 		if (ts->plat_data->img_version_of_ic[i] != ts->plat_data->img_version_of_bin[i])
 			return 0;
@@ -197,6 +198,20 @@ int sec_ts_check_firmware_version(struct sec_ts_data *ts, const u8 *fw_info)
 		else
 			continue;
 	}
+
+	/* check config version */
+	for (i = 0; i < 2; i++) {
+		if (ts->plat_data->para_version_of_ic[i] != ts->plat_data->para_version_of_bin[i])
+			return 0;
+	}
+
+	for (i = 2; i < 4; i++) {
+		if (ts->plat_data->para_version_of_ic[i] < ts->plat_data->para_version_of_bin[i])
+			return 1;
+		else
+			continue;
+	}
+
 	return 0;
 }
 

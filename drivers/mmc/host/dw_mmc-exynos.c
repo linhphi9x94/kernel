@@ -51,12 +51,12 @@ static void dw_mci_exynos_register_dump(struct dw_mci *host)
 
 	dev_err(host->dev, ": DDR200_RDDQS_EN:  0x%08x\n",
 		host->sfr_dump->ddr200_rdqs_en = mci_readl(host,DDR200_RDDQS_EN));
-		dev_err(host->dev, ": DDR200_ASYNC_FIFO_CTRL:   0x%08x\n",
-			host->sfr_dump->ddr200_acync_fifo_ctrl =
-			mci_readl(host, DDR200_ASYNC_FIFO_CTRL));
-		dev_err(host->dev, ": DDR200_DLINE_CTRL:        0x%08x\n",
-			host->sfr_dump->ddr200_dline_ctrl =
-			mci_readl(host, DDR200_DLINE_CTRL));
+	dev_err(host->dev, ": DDR200_ASYNC_FIFO_CTRL:   0x%08x\n",
+		host->sfr_dump->ddr200_acync_fifo_ctrl =
+		mci_readl(host, DDR200_ASYNC_FIFO_CTRL));
+	dev_err(host->dev, ": DDR200_DLINE_CTRL:        0x%08x\n",
+		host->sfr_dump->ddr200_dline_ctrl =
+		mci_readl(host, DDR200_DLINE_CTRL));
 }
 
 void dw_mci_reg_dump(struct dw_mci *host)
@@ -166,9 +166,11 @@ void dw_mci_reg_dump(struct dw_mci *host)
 		 atomic_read(&host->ciu_en_win));
 	reg = mci_readl(host, CMD);
 	dev_err(host->dev, ": ================= CMD REG =================\n");
-	dev_err(host->dev, ": read/write        : %s\n",
-					(reg & (0x1 << 10)) ? "write" : "read");
-	dev_err(host->dev, ": data expected     : %d\n", (reg >> 9) & 0x1);
+	if((reg >> 9) & 0x1) {
+		dev_err(host->dev, ": read/write        : %s\n",
+				(reg & (0x1 << 10)) ? "write" : "read");
+		dev_err(host->dev, ": data expected     : %d\n", (reg >> 9) & 0x1);
+	}
 	dev_err(host->dev, ": cmd index         : %d\n",
 			host->sfr_dump->cmd_index =((reg >> 0) & 0x3f));
 	reg = mci_readl(host, STATUS);
@@ -242,21 +244,20 @@ void dw_mci_exynos_cfg_smu(struct dw_mci *host)
 	if (!(host->pdata->quirks & DW_MCI_QUIRK_BYPASS_SMU))
 		return;
 #endif
-
-	id = of_alias_get_id(host->dev->of_node, "mshc");
+	id = host->channel;
 	switch (id) {
-	case 0:
+		case 0:
 #if defined(CONFIG_MMC_DW_FMP_DM_CRYPT) || defined(CONFIG_MMC_DW_FMP_ECRYPT_FS)
-		ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC0_FMP, FMP_DESC_ON);
+			ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC0_FMP, FMP_DESC_ON);
 #else
-		ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC0_FMP, FMP_DESC_OFF);
+			ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC0_FMP, FMP_DESC_OFF);
 #endif
-		break;
-	case 2:
-		ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC2_FMP, FMP_DESC_OFF);
-		break;
-	default:
-		return;
+			break;
+		case 2:
+			ret = exynos_smc(SMC_CMD_FMP, FMP_SECURITY, EMMC2_FMP, FMP_DESC_OFF);
+			break;
+		default:
+			return;
 	}
 	if (ret)
 		dev_err(host->dev, "Fail to smc call for FMP SECURITY\n");
@@ -1057,7 +1058,7 @@ static int dw_mci_exynos_execute_tuning(struct dw_mci_slot *slot, u32 opcode,
 
 	dev_info(host->dev, "Tuning Abnormal_result 0x%08x.\n", abnormal_result);
 
-	priv->clk_drive_tuning = priv->clk_drive_number;
+	priv->clk_drive_tuning = priv->clk_drive_number - 1;
 	drv_str_retries = priv->clk_drive_number;
 
 	do {

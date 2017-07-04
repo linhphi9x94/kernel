@@ -449,7 +449,7 @@ static int max77854_start_otg_test(struct regmap_desc *pdesc, int started)
 	if (started) {
 		max77854_enable_chgdet(pdesc, 0);
 		max77854_enable_accdet(pdesc, 1);
-	} else 
+	} else
 		max77854_enable_chgdet(pdesc, 1);
 
 	return 0;
@@ -525,6 +525,7 @@ static void max77854_set_switching_mode(struct regmap_desc *pdesc, int mode)
 		_REGMAP_TRACE(pdesc, 'w', ret, attr, value);
 }
 
+<<<<<<< HEAD
 static int max77854_get_vbus_value(struct regmap_desc *pdesc)
 {
 	muic_data_t *muic = pdesc->muic;
@@ -538,6 +539,30 @@ static int max77854_get_vbus_value(struct regmap_desc *pdesc)
 	i2c_smbus_write_byte_data(muic->i2c, REG_HVCONTROL1, adcen | 0x20);
 	msleep(100);
 	vbadc = regmap_read_value(pdesc, STATUS3_VbADC);
+=======
+static int max77854_get_vbus_value(struct regmap_desc *pdesc, int type)
+{
+	muic_data_t *muic = pdesc->muic;
+	int vbadc = 0, result = 0;
+	int adcmode, adcen;
+
+	/* type 0 : afc charger , type 1 : PD charger */
+	pr_info("%s, type %d\n", __func__, type);
+
+	/* for PD charger */
+	if (type == 1) {
+		adcmode = i2c_smbus_read_byte_data(muic->i2c, REG_CONTROL4);
+		adcen = i2c_smbus_read_byte_data(muic->i2c, REG_HVCONTROL1);
+		i2c_smbus_write_byte_data(muic->i2c, REG_CONTROL4, adcmode & 0x3F);
+		i2c_smbus_write_byte_data(muic->i2c, REG_HVCONTROL1, adcen | 0x20);
+		msleep(100);
+		vbadc = regmap_read_value(pdesc, STATUS3_VbADC);
+		i2c_smbus_write_byte_data(muic->i2c, REG_CONTROL4, adcmode);
+		i2c_smbus_write_byte_data(muic->i2c, REG_HVCONTROL1, adcen);
+	} else {
+		vbadc = regmap_read_value(pdesc, STATUS3_VbADC);
+	}
+>>>>>>> 7916c2a... samsung: DQE7 Kernel
 
 	switch (vbadc) {
 	case 0:
@@ -566,8 +591,11 @@ static int max77854_get_vbus_value(struct regmap_desc *pdesc)
 		break;
 	}
 
+<<<<<<< HEAD
 	i2c_smbus_write_byte_data(muic->i2c, REG_CONTROL4, adcmode);
 	i2c_smbus_write_byte_data(muic->i2c, REG_HVCONTROL1, adcen);
+=======
+>>>>>>> 7916c2a... samsung: DQE7 Kernel
 	return result;
 }
 

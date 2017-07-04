@@ -59,7 +59,7 @@ struct usblog_buf {
 	unsigned long event_index;
 	struct ccic_buf ccic_buffer[USBLOG_MAX_BUF2_SIZE];
 	struct mode_buf mode_buffer[USBLOG_MAX_BUF_SIZE];
-	struct state_buf state_buffer[USBLOG_MAX_BUF_SIZE];
+	struct state_buf state_buffer[USBLOG_MAX_BUF2_SIZE];
 	struct event_buf event_buffer[USBLOG_MAX_BUF_SIZE];
 };
 
@@ -98,6 +98,40 @@ static const char *usbstate_string(enum usblog_state usbstate)
 		return "DISCONNECTED";
 	case NOTIFY_RESET:
 		return "RESET";
+	case NOTIFY_RESET_FULL:
+		return "RESET : FULL";
+	case NOTIFY_RESET_HIGH:
+		return "RESET: HIGH";
+	case NOTIFY_RESET_SUPER:
+		return "RESET : SUPER";
+	case NOTIFY_PULLUP:
+		return "VBUS_PULLUP";
+	case NOTIFY_PULLUP_ENABLE:
+		return "VBUS_PULLUP_EN";
+	case NOTIFY_PULLUP_EN_SUCCESS:
+		return "VBUS_PULLUP_EN : S";
+	case NOTIFY_PULLUP_EN_FAIL:
+		return "VBUS_PULLUP_EN : F";
+	case NOTIFY_PULLUP_DISABLE:
+		return "VBUS_PULLUP_DIS";
+	case NOTIFY_PULLUP_DIS_SUCCESS:
+		return "VBUS_PULLUP_DIS : S";
+	case NOTIFY_PULLUP_DIS_FAIL:
+		return "VBUS_PULLUP_DIS : F";
+	case NOTIFY_VBUS_SESSION:
+		return "VBUS_SESSION";
+	case NOTIFY_VBUS_SESSION_ENABLE:
+		return "VBUS_SESSION_EN";
+	case NOTIFY_VBUS_EN_SUCCESS:
+		return "VBUS_SESSION_EN : S";
+	case NOTIFY_VBUS_EN_FAIL:
+		return "VBUS_SESSION_EN : F";
+	case NOTIFY_VBUS_SESSION_DISABLE:
+		return "VBUS_SESSIOIN_DIS";
+	case NOTIFY_VBUS_DIS_SUCCESS:
+		return "VBUS_SESSION_DIS : S";
+	case NOTIFY_VBUS_DIS_FAIL:
+		return "VBUS_SESSION_DIS : F";
 	case NOTIFY_ACCSTART:
 		return "ACCSTART";
 	case NOTIFY_HIGH:
@@ -422,11 +456,11 @@ static int usblog_proc_show(struct seq_file *m, void *v)
 		"\n\n");
 	seq_printf(m,
 		"usblog USB STATE: count=%llu maxline=%d\n",
-			temp_usblog_buffer->state_count, USBLOG_MAX_BUF_SIZE);
+			temp_usblog_buffer->state_count, USBLOG_MAX_BUF2_SIZE);
 
-	if (temp_usblog_buffer->state_count >= USBLOG_MAX_BUF_SIZE) {
+	if (temp_usblog_buffer->state_count >= USBLOG_MAX_BUF2_SIZE) {
 		for (i = temp_usblog_buffer->state_index;
-			i < USBLOG_MAX_BUF_SIZE; i++) {
+			i < USBLOG_MAX_BUF2_SIZE; i++) {
 			ts = temp_usblog_buffer->state_buffer[i].ts_nsec;
 			rem_nsec = do_div(ts, 1000000000);
 			seq_printf(m, "[%5lu.%06lu] %s\n", (unsigned long)ts,
@@ -516,6 +550,7 @@ void mode_store_usblog_notify(int type, char *param1)
 	unsigned long *target_index;
 	char buf[256], buf2[4];
 	char *b, *name;
+	int param_len;
 
 	target_count = &usblog_root.usblog_buffer->mode_count;
 	target_index = &usblog_root.usblog_buffer->mode_index;
@@ -528,24 +563,33 @@ void mode_store_usblog_notify(int type, char *param1)
 
 	strlcpy(buf, param1, sizeof(buf));
 	b = strim(buf);
-	if (b) {
-		name = strsep(&b, ",");
-		strlcpy(buf2, name, sizeof(buf2));
-		strncpy(md_buffer->usbmode_str, buf2,
-			sizeof(md_buffer->usbmode_str)-1);
+
+	if (type == NOTIFY_USBMODE){
+		param_len = strlen(b);
+		if (param_len >= USBLOG_MAX_STRING_SIZE)
+			param_len = USBLOG_MAX_STRING_SIZE-1;
+		strncpy(md_buffer->usbmode_str,b,param_len);
 	}
-	while (b) {
-		name = strsep(&b, ",");
-		if (!name)
-			continue;
-		if (USBLOG_MAX_STRING_SIZE
-			- strlen(md_buffer->usbmode_str) < 5) {
-			strncpy(md_buffer->usbmode_str, "overflow",
-					sizeof(md_buffer->usbmode_str)-1);
-			b = NULL;
-		} else {
-			strncat(md_buffer->usbmode_str, ",", 1);
-			strncat(md_buffer->usbmode_str, name, 3);
+	else if (type == NOTIFY_USBMODE_FUNC){
+		if (b) {
+			name = strsep(&b, ",");
+			strlcpy(buf2, name, sizeof(buf2));
+			strncpy(md_buffer->usbmode_str, buf2,
+				sizeof(md_buffer->usbmode_str)-1);
+		}
+		while (b) {
+			name = strsep(&b, ",");
+			if (!name)
+				continue;
+			if (USBLOG_MAX_STRING_SIZE
+				- strlen(md_buffer->usbmode_str) < 5) {
+				strncpy(md_buffer->usbmode_str, "overflow",
+						sizeof(md_buffer->usbmode_str)-1);
+				b = NULL;
+			} else {
+				strncat(md_buffer->usbmode_str, ",", 1);
+				strncat(md_buffer->usbmode_str, name, 3);
+			}
 		}
 	}
 
@@ -560,7 +604,7 @@ void state_store_usblog_notify(int type, char *param1)
 	struct state_buf *st_buffer;
 	unsigned long long *target_count;
 	unsigned long *target_index;
-	char buf[256], index;
+	char buf[256], index, index2, index3;
 	char *b, *name;
 	int usbstate;
 
@@ -576,7 +620,6 @@ void state_store_usblog_notify(int type, char *param1)
 	strlcpy(buf, param1, sizeof(buf));
 	b = strim(buf);
 	name = strsep(&b, "=");
-
 	index = *(b+USBLOG_CMP_INDEX);
 
 	switch (index) {
@@ -590,16 +633,81 @@ void state_store_usblog_notify(int type, char *param1)
 		usbstate = NOTIFY_DISCONNECTED;
 		break;
 	case 'E':  /* RESET */
-		usbstate = NOTIFY_RESET;
+		name = strsep(&b, ":");
+		index2 = *b;
+		switch(index2) {
+			case 'L': /* FULL SPEED */
+				usbstate = NOTIFY_RESET_FULL;
+				break;
+			case 'H':  /* HIGH SPEED */
+				usbstate = NOTIFY_RESET_HIGH;
+				break;
+			case 'S': /* SUPER SPEED */
+				usbstate = NOTIFY_RESET_SUPER;
+				break;
+			default:
+				usbstate = NOTIFY_RESET;
+				break;
+		}
+		break;
+	case 'L': /* GADGET PULL UP/DN */
+		name = strsep(&b, ":");
+		index2 = *b;
+		name = strsep(&b, ":");		
+		index3 = *b;
+ 
+		switch (index2) {
+			case 'E' : /* VBUS SESSION ENABLE */
+				if (index3 == 'S')
+					usbstate = NOTIFY_PULLUP_EN_SUCCESS;
+				else if (index3 == 'F')
+					usbstate = NOTIFY_PULLUP_EN_FAIL;
+				else
+					usbstate = NOTIFY_PULLUP_ENABLE;
+				break;
+			case 'D': /* VBUS SESSION DISABLE */
+				if (index3 == 'S')
+					usbstate = NOTIFY_PULLUP_DIS_SUCCESS;
+				else if (index3 == 'F')
+					usbstate = NOTIFY_PULLUP_DIS_FAIL;
+				else
+					usbstate = NOTIFY_PULLUP_DISABLE;
+				break;
+			default:
+				usbstate = NOTIFY_PULLUP;
+				break;
+		}
 		break;
 	case 'R':  /* ACCESSORY START */
 		usbstate = NOTIFY_ACCSTART;
 		break;
-	case 'H':  /* HIGH SPEED */
-		usbstate = NOTIFY_HIGH;
-		break;
-	case 'S':  /* SUPER SPEED */
-		usbstate = NOTIFY_SUPER;
+	case 'S':  /* GADGET_VBUS EN/DN*/
+		name = strsep(&b, ":");
+		index2 = *b;
+		name = strsep(&b, ":");
+		index3 = *b;
+
+		switch (index2) {
+			case 'E' : /* VBUS SESSION ENABLE */
+				if (index3 == 'S')
+					usbstate = NOTIFY_VBUS_EN_SUCCESS;
+				else if (index3 == 'F')
+					usbstate = NOTIFY_VBUS_EN_FAIL;
+				else
+					usbstate = NOTIFY_VBUS_SESSION_ENABLE;
+				break;
+			case 'D': /* VBUS SESSION DISABLE */
+				if (index3 == 'S')
+					usbstate = NOTIFY_VBUS_DIS_SUCCESS;
+				else if (index3 == 'F')
+					usbstate = NOTIFY_VBUS_DIS_FAIL;
+				else
+					usbstate = NOTIFY_VBUS_SESSION;
+				break;
+			default:
+				usbstate = NOTIFY_VBUS_SESSION_DISABLE;
+				break;
+		}
 		break;
 	default:
 		pr_err("%s state param error. state=%s\n", __func__, param1);
@@ -608,7 +716,7 @@ void state_store_usblog_notify(int type, char *param1)
 
 	st_buffer->usbstate = usbstate;
 
-	*target_index = (*target_index+1)%USBLOG_MAX_BUF_SIZE;
+	*target_index = (*target_index+1)%USBLOG_MAX_BUF2_SIZE;
 	(*target_count)++;
 err:
 	return;
@@ -631,7 +739,7 @@ void event_store_usblog_notify(int type, unsigned long *param1, int *param2)
 	ev_buffer->event = *param1;
 	ev_buffer->enable = *param2;
 
-	*target_index = (*target_index+1)%USBLOG_MAX_BUF_SIZE;
+	*target_index = (*target_index+1)%USBLOG_MAX_BUF2_SIZE;
 	(*target_count)++;
 err:
 	return;
@@ -662,7 +770,8 @@ void store_usblog_notify(int type, void *param1, void *param2)
 	else if (type == NOTIFY_EVENT)
 		event_store_usblog_notify(type,
 			(unsigned long *)param1, (int *)param2);
-	else  if (type == NOTIFY_USBMODE)
+	else  if (type == NOTIFY_USBMODE
+		|| type == NOTIFY_USBMODE_FUNC)
 		mode_store_usblog_notify(type, (char *)param1);
 	else if (type == NOTIFY_USBSTATE)
 		state_store_usblog_notify(type, (char *)param1);
@@ -690,9 +799,19 @@ EXPORT_SYMBOL(store_ccic_version);
 int register_usblog_proc(void)
 {
 	int ret = 0;
+	struct otg_notify *o_notify = get_otg_notify();
 
 	if (usblog_root.init) {
 		pr_err("%s already registered\n", __func__);
+		if (o_notify != NULL)
+			if ((usblog_root.ccic_ver.sw_main[0] == 0xFF 
+				&& usblog_root.ccic_ver.sw_main[1] == 0xFF)
+			|| (usblog_root.ccic_ver.sw_main[0] == 0x0 
+			&& usblog_root.ccic_ver.sw_main[1] == 0x0)){
+				o_notify->hw_param[USB_CCIC_I2C_ERROR_COUNT]++;
+				pr_info("sw version %d %d\n", usblog_root.ccic_ver.sw_main[0],
+					usblog_root.ccic_ver.sw_main[1]);
+			}
 		goto err;
 	}
 	usblog_root.init = 1;

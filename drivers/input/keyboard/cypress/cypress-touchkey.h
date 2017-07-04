@@ -106,6 +106,7 @@ extern int get_lcd_attached(char *);
 #define TKEY_FW_PATH "/sdcard/Firmware/TOUCHKEY/fw.bin"
 #define TKEY_FW_FFU_PATH "ffu_tk.bin"
 
+#ifdef EFS_CHECK_LIGHT
 #define LIGHT_VERSION_PATH		"/efs/FactoryApp/tkey_light_version"
 #define LIGHT_TABLE_PATH		"/efs/FactoryApp/tkey_light"
 #define LIGHT_CRC_PATH			"/efs/FactoryApp/tkey_light_crc"
@@ -131,7 +132,7 @@ enum WINDOW_COLOR {
 	WINDOW_COLOR_PINKGOLD,
 };
 #define WINDOW_COLOR_DEFAULT		WINDOW_COLOR_BLACK
-
+#endif
 #define CRC_CHECK_INTERNAL
 #undef TK_USE_FWUPDATE_DWORK
 
@@ -234,6 +235,7 @@ struct touchkey_devicetree_data {
 	bool ap_io_power;
 	bool boot_on_ldo;
 	char *fw_path;
+	const char *regulator_avdd;
 };
 
 /*Parameters for i2c driver*/
@@ -288,12 +290,16 @@ struct touchkey_i2c {
 	int (*power)(void *, bool);
 	void (*register_cb)(void *);
 
+#ifdef EFS_CHECK_LIGHT
 	struct delayed_work efs_open_work;
 	int light_version_efs;
 	char light_version_full_efs[LIGHT_VERSION_LEN];
 	char light_version_full_bin[LIGHT_VERSION_LEN];
 	int light_table_crc;
+#endif
 
 	int thd_changed;
 };
+extern int lcdtype;
+
 #endif /* _CYPRESS_TOUCHKEY_H */

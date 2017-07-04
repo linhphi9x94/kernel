@@ -56,6 +56,7 @@
 #define SDMMC_BUFADDR		0x098
 #define SDMMC_RESP_TAT		0x0AC
 #define SDMMC_CDTHRCTL		0x100
+#define SDMMC_EMMC_DDR_REG	0x10C
 #define SDMMC_DATA(x)		(x)
 
 /*

@@ -50,6 +50,8 @@
 #define REG_TX_REQUEST_MSG	0x0240
 #define REG_RX_SRC_CAPA_MSG	0x0260
 
+#define CCIC_VERSION_INVALID -1
+
 /******************************************************************************/
 /* definitions & structures                                                   */
 /******************************************************************************/
@@ -288,7 +290,8 @@ typedef union
                     Ssm_Flag_Identification:1,  // b1
                     Ssm_Flag_RandomNumber:1,    // b2
                     Ssm_Flag_Encrypted_Data:1,  // b3
-                    Ssm_Flag_Reserved:27,       // b4 - b30
+                    Ssm_Flag_Unstructured_Data:1,  // b4
+                    Ssm_Flag_Reserved:26,       // b5 - b30
                     Ssm_Flag_AES_Done:1;
   } BITS;
 } SSM_MSG_IRQ_STATUS_Type;
@@ -675,6 +678,14 @@ typedef enum
 	HOST_ON_BY_RD = 1, // Rd detection
 	HOST_ON_BY_RID000K = 2, // RID000K detection
 } CCIC_HOST_REASON;
+
+typedef enum
+{
+	RP_CURRENT_LEVEL_NONE = 0,
+	RP_CURRENT_LEVEL_DEFAULT,
+	RP_CURRENT_LEVEL2,
+	RP_CURRENT_LEVEL3,
+} CCIC_RP_CURRENT_LEVEL;
 
 #define S2MM005_REG_MASK(reg, mask)	((reg & mask##_MASK) >> mask##_SHIFT)
 

@@ -11,6 +11,7 @@
  */
 
 #include <linux/pm_qos.h>
+#include <linux/device.h>
 
 #include "fimc-is-sysfs.h"
 #include "fimc-is-core.h"
@@ -26,6 +27,7 @@
 /* #define FORCE_CAL_LOAD */
 
 extern struct device *fimc_is_dev;
+extern struct kset *devices_kset;
 struct class *camera_class = NULL;
 struct device *camera_front_dev;
 struct device *camera_rear_dev;
@@ -539,6 +541,8 @@ static DEVICE_ATTR(front_checkfw_factory, S_IRUGO, camera_front_checkfw_factory_
 static ssize_t camera_rear_writefw_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
+/* Disabled for product. Security Hole */ 
+#if 0
 	struct device *is_dev = &sysfs_core->ischain[0].pdev->dev;
 	int ret = 0;
 
@@ -548,6 +552,9 @@ static ssize_t camera_rear_writefw_show(struct device *dev,
 		return sprintf(buf, "NG\n");
 	else
 		return sprintf(buf, "OK\n");
+#else
+	return sprintf(buf, "OK\n");
+#endif
 }
 #endif
 
@@ -1385,6 +1392,7 @@ static ssize_t camera_rear_sensorid_exif_show(struct device *dev,
 	return sprintf(buf, "%s", finfo->from_sensor_id);
 }
 
+#ifdef FROM_HEADER_MODULE_ID_ADDR
 static ssize_t camera_rear_moduleid_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -1396,6 +1404,7 @@ static ssize_t camera_rear_moduleid_show(struct device *dev,
 		finfo->from_module_id[6], finfo->from_module_id[7], finfo->from_module_id[8],
 		finfo->from_module_id[9]);
 }
+#endif
 
 #if defined(CONFIG_CAMERA_EEPROM_SUPPORT_FRONT)
 static ssize_t camera_front_sensorid_exif_show(struct device *dev,
@@ -1686,7 +1695,10 @@ static DEVICE_ATTR(rear_force_cal_load, S_IRUGO, camera_rear_force_cal_load_show
 #endif
 static DEVICE_ATTR(rear_afcal, S_IRUGO, camera_rear_afcal_show, NULL);
 static DEVICE_ATTR(rear_sensorid_exif, S_IRUGO, camera_rear_sensorid_exif_show, NULL);
+#ifdef FROM_HEADER_MODULE_ID_ADDR
 static DEVICE_ATTR(rear_moduleid, S_IRUGO, camera_rear_moduleid_show, NULL);
+static DEVICE_ATTR(SVC_rear_module, S_IRUGO, camera_rear_moduleid_show, NULL);
+#endif
 #if defined(CONFIG_CAMERA_EEPROM_SUPPORT_FRONT)
 static DEVICE_ATTR(front_sensorid_exif, S_IRUGO, camera_front_sensorid_exif_show, NULL);
 #endif
@@ -1701,12 +1713,48 @@ static DEVICE_ATTR(iris_caminfo, S_IRUGO, camera_iris_info_show, NULL);
 #endif
 #endif
 
+int svc_cheating_prevent_device_file_create(struct kobject **obj)
+{
+	struct kernfs_node *svc_sd;
+	struct kobject *data;
+	struct kobject *Camera;
+
+	/* To find SVC kobject */
+	svc_sd = sysfs_get_dirent(devices_kset->kobj.sd, "svc");
+	if (IS_ERR_OR_NULL(svc_sd)) {
+		/* try to create svc kobject */
+		data = kobject_create_and_add("svc", &devices_kset->kobj);
+		if (IS_ERR_OR_NULL(data)) {
+			pr_info("Failed to create sys/devices/svc already exist svc : 0x%p\n", data);
+		} else {
+			pr_info("Success to create sys/devices/svc svc : 0x%p\n", data);
+		}
+	} else {
+		data = (struct kobject *)svc_sd->priv;
+		pr_info("Success to find svc_sd : 0x%p svc : 0x%p\n", svc_sd, data);
+	}
+
+	Camera = kobject_create_and_add("Camera", data);
+	if (IS_ERR_OR_NULL(Camera)) {
+		pr_info("Failed to create sys/devices/svc/Camera : 0x%p\n", Camera);
+	} else {
+		pr_info("Success to create sys/devices/svc/Camera : 0x%p\n", Camera);
+	}
+
+	*obj = Camera;
+	return 0;
+}
+
 int fimc_is_create_sysfs(struct fimc_is_core *core)
 {
+	struct kobject *svc = 0;
+
 	if (!core) {
 		err("fimc_is_core is null");
 		return -EINVAL;
 	}
+
+	svc_cheating_prevent_device_file_create(&svc);
 
 	if (camera_class == NULL) {
 		camera_class = class_create(THIS_MODULE, "camera");
@@ -1851,10 +1899,16 @@ int fimc_is_create_sysfs(struct fimc_is_core *core)
 			printk(KERN_ERR "failed to create rear device file, %s\n",
 					dev_attr_rear_sensorid_exif.attr.name);
 		}
+#ifdef FROM_HEADER_MODULE_ID_ADDR
 		if (device_create_file(camera_rear_dev, &dev_attr_rear_moduleid) < 0) {
 			printk(KERN_ERR "failed to create rear device file, %s\n",
 					dev_attr_rear_moduleid.attr.name);
 		}
+		if (sysfs_create_file(svc, &dev_attr_SVC_rear_module.attr) < 0) {
+			printk(KERN_ERR "failed to create rear device file, %s\n",
+				dev_attr_SVC_rear_module.attr.name);
+		}
+#endif
 #ifdef CONFIG_COMPANION_FACTORY_VALIDATION
 		if (device_create_file(camera_rear_dev, &dev_attr_companion_ic_check) < 0) {
 			printk(KERN_ERR "failed to create rear device file, %s\n",
@@ -1982,7 +2036,9 @@ int fimc_is_destroy_sysfs(struct fimc_is_core *core)
 #endif
 		device_remove_file(camera_rear_dev, &dev_attr_rear_afcal);
 		device_remove_file(camera_rear_dev, &dev_attr_rear_sensorid_exif);
+#ifdef FROM_HEADER_MODULE_ID_ADDR
 		device_remove_file(camera_rear_dev, &dev_attr_rear_moduleid);
+#endif
 		device_remove_file(camera_rear_dev, &dev_attr_fw_update);
 #ifdef CONFIG_COMPANION_FACTORY_VALIDATION
 		device_remove_file(camera_rear_dev, &dev_attr_companion_ic_check);

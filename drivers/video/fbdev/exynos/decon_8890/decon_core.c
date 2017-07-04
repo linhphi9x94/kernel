@@ -24,9 +24,6 @@
 #include <linux/exynos_ion.h>
 #include <linux/ion.h>
 #include <linux/irq.h>
-#ifdef CONFIG_POWERSUSPEND
-#include <linux/powersuspend.h>
-#endif
 #include <linux/highmem.h>
 #include <linux/memblock.h>
 #include <linux/exynos_iovmm.h>
@@ -890,12 +887,6 @@ static int decon_reg_ddi_partial_cmd(struct decon_device *decon, struct decon_wi
 	decon_reg_wait_linecnt_is_zero_timeout(decon->id, 0, 35 * 1000);
 
 #ifdef CONFIG_FB_DSU
-	if( decon->dsu_lock_cnt > 0  ) {
-		decon->dsu_lock_cnt--;
-		if( decon->dsu_lock_cnt == 0 )
-			v4l2_subdev_call(decon->output_sd, core, ioctl, DSIM_IOC_REG_LOCK, (void*) 0);
-	}
-
 	if( decon->need_DSU_update != DECON_DSU_DONE )
 		decon_dsu_handler(decon);
 #endif
@@ -1538,9 +1529,6 @@ static int decon_blank(int blank_mode, struct fb_info *info)
 	case FB_BLANK_NORMAL:
 		DISP_SS_EVENT_LOG(DISP_EVT_BLANK, &decon->sd, ktime_set(0, 0));
 		ret = decon_disable(decon);
-#ifdef CONFIG_POWERSUSPEND
-		set_power_suspend_state_panel_hook(POWER_SUSPEND_ACTIVE);
-#endif
 		if (ret) {
 			decon_err("failed to disable decon\n");
 			goto blank_exit;
@@ -1549,9 +1537,6 @@ static int decon_blank(int blank_mode, struct fb_info *info)
 	case FB_BLANK_UNBLANK:
 		DISP_SS_EVENT_LOG(DISP_EVT_UNBLANK, &decon->sd, ktime_set(0, 0));
 		ret = decon_enable(decon);
-#ifdef CONFIG_POWERSUSPEND
-		set_power_suspend_state_panel_hook(POWER_SUSPEND_INACTIVE);
-#endif
 		if (ret) {
 			decon_err("failed to enable decon\n");
 			goto blank_exit;
@@ -2236,6 +2221,13 @@ static void decon_set_win_update_config(struct decon_device *decon,
 	int need_update = decon->need_update;
 	bool is_scale_layer;
 
+#ifdef CONFIG_FB_DSU
+	/* in HD mode, panic when partial update. ie need sync dsc-slice-height with HWC */
+	if( decon->DSU_mode && decon->lcd_info->yres <= 1280 ) {
+		memset(update_config, 0, sizeof(struct decon_win_config));
+	}
+#endif
+
 #ifdef CONFIG_LCD_ALPM
 	struct dsim_device *dsim = NULL;
 	if (decon->pdata->out_type == DECON_OUT_DSI) {
@@ -2605,7 +2597,7 @@ static int decon_dsu_dsc_reconfig(struct decon_device *decon)
 	struct dsim_device *dsim = NULL;
 	int slice_height = 64;
 	int dsc_slice_pixels;
-	const int dsc_height_hwc = 64;
+	const int dsc_height_hwc = 128;
 	int ret = 0;
 
 	dsim = container_of(decon->output_sd, struct dsim_device, sd);
@@ -3078,12 +3070,6 @@ end:
 	DISP_SS_EVENT_LOG(DISP_EVT_TRIG_MASK, &decon->sd, ktime_set(0, 0));
 	decon->trig_mask_timestamp =  ktime_get();
 
-#ifdef CONFIG_FB_DSU
-	if ( decon_bmpbuffer_is_storetime() && decon->pdata->out_type != DECON_OUT_WB) {
-		decon_bmpbuffer_store_window( decon,  regs, old_plane_cnt );
-	}
-#endif
-
 	for (i = 0; i < decon->pdata->max_win; i++) {
 		for (j = 0; j < old_plane_cnt[i]; ++j)
 			if (decon->pdata->out_type == DECON_OUT_WB)
@@ -3114,6 +3100,7 @@ end:
 
 #ifdef CONFIG_LCD_DOZE_MODE
 	if (decon->req_display_on) {
+		dsim->req_display_on = true;
 		call_panel_ops(dsim, displayon, dsim);
 		decon->req_display_on = 0;
 }
@@ -3207,9 +3194,17 @@ static void decon_dsu_handler(struct decon_device *decon)
 	decon_info("++ %s\n", __func__ );
 	start_time = ktime_to_ms(ktime_get());
 
-#if defined(CONFIG_FB_DSU) && defined(CONFIG_PANEL_S6E3HF4_WQHD)
+#ifdef CONFIG_FB_DSU
+#ifdef CONFIG_FB_DSU_NOT_SEAMLESS
+	decon->dsu_lock_cnt = 2;
+	/* 1 frame delay after Display-off : change of PPS is showing at once. therefore, PPS change must be next frame of display-off */
+	v4l2_subdev_call(decon->output_sd, core, ioctl, DSIM_IOC_DISPLAY_ONOFF, (void*) 0);
+	usleep_range(17000, 17000);
+#endif	
+#ifdef CONFIG_FB_DSU_REG_LOCK
 	decon->dsu_lock_cnt = 2;
 	v4l2_subdev_call(decon->output_sd, core, ioctl, DSIM_IOC_REG_LOCK, (void*) 1);
+#endif	
 #endif
 
 	loop_out = false;
@@ -3323,9 +3318,6 @@ static int decon_dsu_change( struct decon_device *decon, struct decon_win_config
 	decon_lpd_block_exit(decon);
 	flush_workqueue(decon->lpd_wq);
 
-	decon_bmpbuffer_clear();
-	decon_bmpbuffer_settimer(0);	// 0 = no save
-
 	pr_info( "DSU %s.%d : DSU_mode=%d, lcd_info (%d,%d)\n", __func__, __LINE__, decon->DSU_mode, decon->lcd_info->xres, decon->lcd_info->yres );
 
 	return 0;
@@ -3344,7 +3336,7 @@ static int decon_is_all_window_empty( struct decon_device *decon, struct decon_w
 	}
 
 	if(is_empty) pr_info( "decon : window size for DSU checked.\n" );
-	
+
 	return is_empty;
 }
 #endif
@@ -3415,6 +3407,18 @@ static int decon_set_win_config(struct decon_device *decon,
 	if( cnt_after_dsu_changed >= 0 ) {
 		pr_info( "%s\n", decon_last_window_rect_log() );
 		if( ++cnt_after_dsu_changed > 5 ) cnt_after_dsu_changed = -1; // remove trigger
+	}
+
+	if( decon->dsu_lock_cnt > 0  ) {
+		decon->dsu_lock_cnt--;
+		if( decon->dsu_lock_cnt == 0 ) {
+#ifdef CONFIG_FB_DSU_REG_LOCK			
+			v4l2_subdev_call(decon->output_sd, core, ioctl, DSIM_IOC_REG_LOCK, (void*) 0);
+#endif
+#ifdef CONFIG_FB_DSU_NOT_SEAMLESS			
+			v4l2_subdev_call(decon->output_sd, core, ioctl, DSIM_IOC_DISPLAY_ONOFF, (void*) 1);
+#endif
+		}
 	}
 
 	update_config = &win_config[DECON_WIN_UPDATE_IDX];
@@ -3537,7 +3541,8 @@ windows_config:
 		case DECON_WIN_STATE_COLOR:
 			enabled = 1;
 			color = config->color;
-			decon_win_conig_to_regs_param(0, config, win_regs, IDMA_G0);
+			decon_win_conig_to_regs_param(0, config, win_regs, config->idma_type);
+			ret = 0;
 			break;
 		case DECON_WIN_STATE_BUFFER:
 			if (!decon->id && (((config->idma_type == IDMA_G0) &&
@@ -3648,7 +3653,7 @@ windows_config:
 	}
 err:
 #if defined(CONFIG_LCD_ESD_IDLE_MODE)
-	if (decon->pdata->out_type == DECON_OUT_DSI) {
+	if ((decon->pdata->out_type == DECON_OUT_DSI) && (decon->state == DECON_STATE_ON)){
 		decon_esd_idle_mode_cmd(decon);
 	}
 #endif

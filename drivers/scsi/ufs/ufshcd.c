@@ -69,7 +69,8 @@
 #define QUERY_REQ_TIMEOUT 1300 /* msec */
 
 /* Task management command timeout */
-#define TM_CMD_TIMEOUT	100 /* msecs */
+#define TM_CMD_TIMEOUT	200 /* msecs */
+#define TM_SET_CMD_TIMEOUT	200 /* msecs */
 
 /* maximum number of link-startup retries */
 #define DME_LINKSTARTUP_RETRIES 3
@@ -1185,9 +1186,15 @@ static int ufshcd_map_sg(struct ufs_hba *hba, struct ufshcd_lrb *lrbp)
 			if (!((unsigned long)(sg_page(sg)->mapping) & 0x1)) {
 				if (sg_page(sg)->mapping && sg_page(sg)->mapping->key && \
 						!sg_page(sg)->mapping->plain_text) {
-					if ((unsigned int)(sg_page(sg)->index) >= 2)
+					if ((unsigned int)(sg_page(sg)->index) >= 2) {
 						sector_key |= UFS_FILE_ENCRYPTION_SECTOR_BEGIN;
-					else
+						if ((strncmp(sg_page(sg)->mapping->alg, "aes", sizeof("aes")) &&
+						                strncmp(sg_page(sg)->mapping->alg, "aesxts", sizeof("aesxts"))) ||
+						                !sg_page(sg)->mapping->key_length) {
+						        dev_info(hba->dev, "FMP file encryption is skipped due to invalid alg or key length\n");
+						        sector_key &= ~UFS_FILE_ENCRYPTION_SECTOR_BEGIN;
+						}
+					} else
 						sector_key &= ~UFS_FILE_ENCRYPTION_SECTOR_BEGIN;
 				} else {
 					sector_key &= ~UFS_FILE_ENCRYPTION_SECTOR_BEGIN;
@@ -2341,10 +2348,8 @@ int ufshcd_read_vendor_specific_desc(struct ufs_hba *hba, enum desc_idn desc_id,
 				       desc_id, desc_index, buf, size);
 		if (!err)
 			break;
-#ifdef CONFIG_JOURNAL_DATA_TAG
 		if (err == QUERY_RESULT_INVALID_IDN) 
 			break;
-#endif
 		dev_dbg(hba->dev, "%s: error %d retrying\n", __func__, err);
 	}
 
@@ -2641,7 +2646,7 @@ static int ufshcd_dme_enable(struct ufs_hba *hba)
 	ret = ufshcd_send_uic_cmd(hba, &uic_cmd);
 	if (ret)
 		dev_err(hba->dev,
-			"dme-reset: error code %d\n", ret);
+			"dme-enable: error code %d\n", ret);
 
 	return ret;
 }
@@ -2776,7 +2781,7 @@ static int ufshcd_uic_pwr_ctrl(struct ufs_hba *hba, struct uic_command *cmd)
 	status = ufshcd_get_upmcrs(hba);
 	if (status != PWR_LOCAL) {
 		dev_err(hba->dev,
-			"pwr ctrl cmd 0x%0x failed, host umpcrs:0x%x\n",
+			"pwr ctrl cmd 0x%0x failed, host upmcrs:0x%x\n",
 			cmd->command, status);
 		ret = (status != PWR_OK) ? status : -1;
 	}
@@ -3600,8 +3605,8 @@ static int ufshcd_task_req_compl(struct ufs_hba *hba, u32 index, u8 *resp)
 	if (ocs_value == OCS_SUCCESS) {
 		task_rsp_upiup = (struct utp_upiu_task_rsp *)
 				task_req_descp[index].task_rsp_upiu;
-		task_result = be32_to_cpu(task_rsp_upiup->header.dword_1);
-		task_result = ((task_result & MASK_TASK_RESPONSE) >> 8);
+		task_result = be32_to_cpu(task_rsp_upiup->output_param1);
+		task_result = task_result & MASK_TM_SERVICE_RESP;
 		if (resp)
 			*resp = (u8)task_result;
 	} else {
@@ -4412,6 +4417,7 @@ static int ufshcd_issue_tm_cmd(struct ufs_hba *hba, int lun_id, int task_id,
 	int free_slot;
 	int err;
 	int task_tag;
+	unsigned int tm_timeout;
 
 	host = hba->host;
 
@@ -4455,6 +4461,10 @@ static int ufshcd_issue_tm_cmd(struct ufs_hba *hba, int lun_id, int task_id,
 	ufshcd_writel(hba, 1 << free_slot, REG_UTP_TASK_REQ_DOOR_BELL);
 
 	spin_unlock_irqrestore(host->host_lock, flags);
+
+	/* Need more time to complete X_SET TM function */
+	tm_timeout = (hba->quirks & UFSHCI_QUIRK_USE_ABORT_TASK) ?
+					TM_SET_CMD_TIMEOUT : TM_CMD_TIMEOUT;
 
 	/* wait until the task management command is completed */
 	err = wait_event_timeout(hba->tm_wq,
@@ -4535,6 +4545,19 @@ out:
 	return err;
 }
 
+static void ufshcd_transfer_req_compl_and_clear(struct ufs_hba *hba)
+{
+	int tag;
+	unsigned long flags;
+
+	for_each_set_bit(tag, &hba->outstanding_reqs, hba->nutrs)
+		ufshcd_clear_cmd(hba, tag);
+
+	spin_lock_irqsave(hba->host->host_lock, flags);
+	__ufshcd_transfer_req_compl(hba, DID_RESET);
+	spin_unlock_irqrestore(hba->host->host_lock, flags);
+}
+
 /**
  * ufshcd_abort - abort a specific command
  * @cmd: SCSI command pointer
@@ -4558,12 +4581,27 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 	u8 resp = 0xF;
 	struct ufshcd_lrb *lrbp;
 	u32 reg;
+	u8 tm_function;
 
 	host = cmd->device->host;
 	hba = shost_priv(host);
 	tag = cmd->request->tag;
 
-	dev_err(hba->dev, "%s: tag:%d, cmd:0x%x\n", __func__, tag, cmd->cmnd[0]);
+	if (cmd->cmnd[0] == READ_10 || cmd->cmnd[0] == WRITE_10) {
+		unsigned long lba = (cmd->cmnd[2] << 24) |
+					(cmd->cmnd[3] << 16) |
+					(cmd->cmnd[4] << 8) |
+					(cmd->cmnd[5] << 0);
+		unsigned int sct = (cmd->cmnd[7] << 8) |
+					(cmd->cmnd[8] << 0);
+
+		dev_err(hba->dev, "%s: tag:%d, cmd:0x%x, "
+				"lba:0x%08lx, sct:0x%04x, retries %d\n",
+				__func__, tag, cmd->cmnd[0], lba, sct, cmd->allowed);
+	} else {
+		dev_err(hba->dev, "%s: tag:%d, cmd:0x%x, retries %d\n",
+				__func__, tag, cmd->cmnd[0], cmd->allowed);
+	}
 
 	ufshcd_hold(hba, false);
 
@@ -4586,10 +4624,13 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 		goto clean;
 	}
 
+	tm_function = (hba->quirks & UFSHCI_QUIRK_USE_ABORT_TASK) ?
+			UFS_QUERY_TASK_SET : UFS_QUERY_TASK;
+
 	lrbp = &hba->lrb[tag];
 	for (poll_cnt = 100; poll_cnt; poll_cnt--) {
 		err = ufshcd_issue_tm_cmd(hba, lrbp->lun, lrbp->task_tag,
-				UFS_QUERY_TASK, &resp);
+				tm_function, &resp);
 		if (!err && resp == UPIU_TASK_MANAGEMENT_FUNC_SUCCEEDED) {
 			/* cmd pending in the device */
 			break;
@@ -4627,14 +4668,29 @@ static int ufshcd_abort(struct scsi_cmnd *cmd)
 		goto out;
 	}
 
+
+	tm_function = (hba->quirks & UFSHCI_QUIRK_USE_ABORT_TASK) ?
+			UFS_ABORT_TASK_SET : UFS_ABORT_TASK;
+
 	err = ufshcd_issue_tm_cmd(hba, lrbp->lun, lrbp->task_tag,
-			UFS_ABORT_TASK, &resp);
+			tm_function, &resp);
 	if (err || resp != UPIU_TASK_MANAGEMENT_FUNC_COMPL) {
 		if (!err)
 			err = resp; /* service response error */
 		dev_err(hba->dev,
 			"%s: abort task failed with err %d\n",
 			__func__, err);
+		goto out;
+	}
+
+	/*
+	 * The actual action is done only first time
+	 * for all pending tasks collectively
+	 * when using UFSHCI_QUIRK_USE_ABORT_TASK
+	 * For abort to others in this case, this function does nothing.
+	 */
+	if (hba->quirks & UFSHCI_QUIRK_USE_ABORT_TASK) {
+		ufshcd_transfer_req_compl_and_clear(hba);
 		goto out;
 	}
 
@@ -4736,7 +4792,7 @@ static int ufshcd_reset_and_restore(struct ufs_hba *hba)
 	__ufshcd_transfer_req_compl(hba, DID_RESET);
 	spin_unlock_irqrestore(hba->host->host_lock, flags);
 
-	ssleep(1);
+	ssleep(2);
 
 	do {
 		err = ufshcd_host_reset_and_restore(hba);
@@ -5099,7 +5155,7 @@ retry:
 	ufs_advertise_fixup_device(hba);
 
 #ifdef CONFIG_JOURNAL_DATA_TAG
-	if (hba->host->journal_tag)
+	if (hba->host->journal_tag == JOURNAL_TAG_ON)
 		hba->ee_ctrl_mask |= MASK_EE_SYSPOOL_EVENT;
 #endif
 	/* UFS device is also active now */
@@ -5174,6 +5230,9 @@ out:
 		dev_err(hba->dev, "%s failed with err %d, retrying:%d\n",
 			__func__, ret, re_cnt);
 		goto retry;
+	} else if (ret && re_cnt == UFS_LINK_SETUP_RETRIES) {
+		pr_auto(ASL6, "%s %s: %s failed after retries with err %d\n",
+			dev_driver_string(hba->dev), dev_name(hba->dev), __func__, ret);
 	}
 
 	/*

@@ -13,6 +13,9 @@
 #elif defined(CONFIG_PANEL_S6E3FA2_FHD)
 #include "s6e3fa2_fhd_param.h"
 
+#elif defined(CONFIG_PANEL_S6E3HF2_WQXGA)
+#include "s6e3hf2_wqxga_param.h"
+
 #else
 #error "ERROR !! Check LCD Panel Header File"
 #endif

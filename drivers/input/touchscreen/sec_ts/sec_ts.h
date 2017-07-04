@@ -20,10 +20,16 @@
 #define SEC_TS_I2C_NAME "sec_ts"
 #define SEC_TS_DEVICE_NAME "SEC_TS"
 
+#ifdef CONFIG_SEC_FACTORY
+#undef CONFIG_TOUCHSCREEN_SUPPORT_MULTIMEDIA
+#endif
+
 #define USE_OPEN_CLOSE
 #define TOUCH_RESET_DWORK_TIME 10
 /* #define USE_OPEN_POWER_RESET */
 #define CALIBRATION_BY_FACTORY
+
+#define USE_HW_PARAMETER
 
 /* LCD ID  0x ID1 ID2 ID3 */
 #define LCD_ID2_MODEL_MASK	0x003000	// ID2 - 00110000
@@ -139,6 +145,7 @@
 #define SEC_TS_CMD_SET_SPENMODE		0x75
 #define SEC_TS_CMD_NOISE_MODE 0x77
 #define SEC_TS_CMD_NVM    0x85
+#define SEC_TS_CMD_WET_MODE	0x9F
 #define SEC_TS_CMD_GET_CHECKSUM		0xA6
 #define SEC_TS_CMD_CHG_SYSMODE 0xD7
 
@@ -183,6 +190,8 @@
 #define SEC_TS_ACK_SELF_TEST_DONE	0x0A
 #define SEC_TS_ACK_BOOT_COMPLETE	0x0C
 #define SEC_TS_ACK_EVENT_QUEUE_FULL	0x29
+#define SEC_TS_ACK_EVENT_WATER_DIVE_MODE	0x2C
+#define SEC_TS_ACK_EVENT_WATER_WET_MODE		0x30
 
 #define SEC_TS_BIT_SETFUNC_TOUCH (0x1<<0)
 #define SEC_TS_BIT_SETFUNC_MUTUAL (0x1<<0)
@@ -218,6 +227,12 @@
 #define SEC_TS_CMD_DEAD_ZONE			0x32
 #define SEC_TS_CMD_LANDSCAPE_MODE		0x33
 
+// dual mode for Hero2
+#define SEC_TS_CMD_EDGE_HANDLER_FOR_DUAL		0x34
+#define SEC_TS_CMD_EDGE_AREA_FOR_DUAL			0x35
+#define SEC_TS_CMD_DEAD_ZONE_FOR_DUAL			0x36
+#define SEC_TS_CMD_LANDSCAPE_MODE_FOR_DUAL		0x37
+
 enum grip_write_mode {
 	G_NONE				= 0,
 	G_SET_EDGE_HANDLER		= 1,
@@ -225,6 +240,10 @@ enum grip_write_mode {
 	G_SET_NORMAL_MODE		= 4,
 	G_SET_LANDSCAPE_MODE	= 8,
 	G_CLR_LANDSCAPE_MODE	= 16,
+};
+enum grip_set_data {
+	ONLY_EDGE_HANDLER		= 0,
+	GRIP_ALL_DATA			= 1,
 };
 #endif
 
@@ -521,18 +540,25 @@ struct sec_ts_data {
 	unsigned int scrub_y;
 
 #ifdef TWO_LEVEL_GRIP_CONCEPT
+	u8	gripreg_edge_handler;
+	u8	gripreg_edge_area;
+	u8	gripreg_dead_zone;
+	u8	gripreg_landscape_mode;
 	u8	grip_edgehandler_direction;
 	int grip_edgehandler_start_y;
 	int grip_edgehandler_end_y;
-	u8 grip_edge_range;
+	u16 grip_edge_range;
 	u8 grip_deadzone_up_x;
 	u8 grip_deadzone_dn_x;
 	int grip_deadzone_y;
 	u8 grip_landscape_mode;
 	int grip_landscape_edge;
-	u8 grip_landscape_deadzone;
+	u16 grip_landscape_deadzone;
 #endif
-
+#ifdef CONFIG_TOUCHSCREEN_SUPPORT_MULTIMEDIA
+	bool brush_enable;
+	bool velocity_enable;
+#endif
 	int nv;
 	int cal_count;
 
@@ -549,6 +575,21 @@ struct sec_ts_data {
 
 	int tspid_val;
 	int tspid2_val;
+
+	int wet_mode;
+	int dive_mode;
+
+#ifdef USE_HW_PARAMETER
+	struct delayed_work work_read_info;
+
+	unsigned char ito_test[4];
+	unsigned char check_multi;
+	unsigned int multi_count;
+	unsigned int wet_count;
+	unsigned int dive_count;
+	unsigned int comm_err_count;
+	unsigned char module_id[4];
+#endif
 
 	int (*sec_ts_i2c_write)(struct sec_ts_data * ts, u8 reg, u8 * data, int len);
 	int (*sec_ts_i2c_read)(struct sec_ts_data * ts, u8 reg, u8 * data, int len);
@@ -612,6 +653,11 @@ int get_tsp_nvm_data(struct sec_ts_data *ts, u8 offset);
 void set_tsp_nvm_data_clear(struct sec_ts_data *ts, u8 offset);
 void sec_ts_release_all_finger(struct sec_ts_data *ts);
 
+#ifdef USE_HW_PARAMETER
+int sec_ts_read_raw_data(struct sec_ts_data *ts, struct sec_ts_test_mode *mode);
+int execute_selftest(struct sec_ts_data *ts);
+#endif
+
 /* static void clear_cover_cmd_work(struct work_struct *work); */
 
 void sec_ts_delay(unsigned int ms);
@@ -629,6 +675,11 @@ extern struct sec_ts_data *ts_dup;
 
 #ifdef CONFIG_BATTERY_SAMSUNG
 extern unsigned int lpcharge;
+#endif
+
+#ifdef TWO_LEVEL_GRIP_CONCEPT
+extern void set_grip_data_to_ic(struct sec_ts_data *ts, u8 flag);
+extern void sec_ts_set_grip_type(struct sec_ts_data *ts, u8 set_type);
 #endif
 
 #endif

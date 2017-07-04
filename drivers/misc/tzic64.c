@@ -211,7 +211,7 @@ typedef struct
 static long tzic_ioctl(struct file *file, unsigned cmd, unsigned long arg)
 {
 	int ret = 0;
-	t_flag param;
+	t_flag param = { 0, 0 };
 
 	ret = gotoCpu0();
 	if (0 != ret) {

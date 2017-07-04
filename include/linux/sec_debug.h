@@ -13,8 +13,20 @@
 #ifndef SEC_DEBUG_H
 #define SEC_DEBUG_H
 
+#include <linux/sizes.h>
 
 #ifdef CONFIG_SEC_DEBUG
+enum sec_debug_extra_buf_type {
+	INFO_BUG	= 0,
+	INFO_SYSMMU,			/* Debugging Option 1 */
+	INFO_BUSMON,			/* Debugging Option 2 */
+	INFO_DPM_TIMEOUT,		/* Debugging Option 3 */
+	INFO_SMPL_CNT,			/* Debugging Option 4 */
+	INFO_SLUB_DBG = INFO_SMPL_CNT,	/* Debugging Option 4 */
+	INFO_SYN_INFO,			/* Debugging Option 5 */
+	INFO_MAX,
+};
+
 extern void (*mach_restart)(char mode, const char *cmd);
 extern bool exynos_ss_hardkey_triger;
 
@@ -31,10 +43,9 @@ extern void sec_getlog_supply_kernel(void *klog_buf);
 extern void sec_getlog_supply_platform(unsigned char *buffer, const char *name);
 
 /* reset extra info */
-extern void sec_debug_store_bug_string(const char *fmt, ...);
+extern void sec_debug_store_extra_buf(enum sec_debug_extra_buf_type type, const char *fmt, ...);
 extern void sec_debug_store_fault_addr(unsigned long addr, struct pt_regs *regs);
 extern void sec_debug_store_backtrace(struct pt_regs *regs);
-
 extern void sec_gaf_supply_rqinfo(unsigned short curr_offset, unsigned short rq_offset);
 #else
 #define sec_debug_init()			(-1)
@@ -87,7 +98,9 @@ enum sec_debug_upload_cause_t {
 	UPLOAD_CAUSE_KERNEL_PANIC	= 0x000000C8,
 	UPLOAD_CAUSE_HARDKEY_RESET	= 0x000000CA,
 	UPLOAD_CAUSE_FORCED_UPLOAD	= 0x00000022,
+#ifdef CONFIG_SEC_UPLOAD
 	UPLOAD_CAUSE_USER_FORCED_UPLOAD	= 0x00000074,
+#endif
 	UPLOAD_CAUSE_CP_ERROR_FATAL	= 0x000000CC,
 	UPLOAD_CAUSE_USER_FAULT		= 0x0000002F,
 	UPLOAD_CAUSE_HSIC_DISCONNECTED	= 0x000000DD,
@@ -124,6 +137,105 @@ enum
 };
 int sec_set_param(unsigned long offset, char val);
 #endif /* CONFIG_SEC_PARAM */
+
+/* layout of SDRAM
+	   0: magic (4B)
+      4~1023: panic string (1020B)
+ 0x400~0x7ff: panic Extra Info (1KB)
+0x800~0x1000: panic dumper log
+      0x4000: copy of magic
+ */
+#define SEC_DEBUG_MAGIC_PA 0x80000000
+#define SEC_DEBUG_MAGIC_VA phys_to_virt(SEC_DEBUG_MAGIC_PA)
+#define SEC_DEBUG_EXTRA_INFO_VA SEC_DEBUG_MAGIC_VA+0x400
+#define BUF_SIZE_MARGIN SZ_1K - 0x80
+
+/* store panic extra info
+        "KTIME":""      : kernel time
+        "FAULT":""      : pgd,va,*pgd,*pud,*pmd,*pte
+        "BUG":""        : bug msg
+        "PANIC":""      : panic buffer msg
+        "PC":""         : pc val
+        "LR":""         : link register val
+        "STACK":""      : backtrace
+        "CHIPID":""     : CPU Serial Number
+        "DBG0":""       : Debugging Option 0
+        "DBG1":""       : Debugging Option 1
+        "DBG2":""       : Debugging Option 2
+        "DBG3":""       : Debugging Option 3
+        "DBG4":""       : Debugging Option 4
+        "DBG5":""       : Debugging Option 5
+*/
+struct sec_debug_panic_extra_info {
+	unsigned long fault_addr;
+	char extra_buf[INFO_MAX][SZ_256];
+	unsigned long pc;
+	unsigned long lr;
+	char backtrace[SZ_512];
+};
+
+#ifdef CONFIG_KFAULT_AUTO_SUMMARY
+#define AUTO_COMMENT_SIZE 0xf3c
+#define AUTO_SUMMARY_MAGIC 0xcafecafe
+#define AUTO_SUMMARY_TAIL_MAGIC 0x00c0ffee
+
+#define PRIO_LV0 0
+#define PRIO_LV1 1
+#define PRIO_LV2 2
+#define PRIO_LV3 3
+#define PRIO_LV4 4
+#define PRIO_LV5 5
+#define PRIO_LV6 6
+#define PRIO_LV7 7
+#define PRIO_LV8 8
+#define PRIO_LV9 9
+
+#define SEC_DEBUG_AUTO_COMM_BUF_SIZE 10
+
+enum sec_debug_FREQ_INFO
+{
+	FREQ_INFO_CLD0 = 0,
+	FREQ_INFO_CLD1,
+	FREQ_INFO_INT,
+	FREQ_INFO_MIF,
+	FREQ_INFO_MAX,
+};
+
+struct sec_debug_auto_comm_buf {
+	atomic_t logging_entry;
+	atomic_t logging_diable;
+	atomic_t logging_count;
+	unsigned int offset;
+	char buf[SZ_4K];
+};
+
+struct sec_debug_auto_comm_freq_info {
+	int old_freq;
+	int new_freq;
+	u64 time_stamp;
+	u64 last_freq_info;
+};
+
+struct sec_debug_auto_summary {
+	int haeder_magic;
+	int fault_flag;
+	int lv5_log_cnt;
+	u64 lv5_log_order;
+	int order_map_cnt;
+	int order_map[SEC_DEBUG_AUTO_COMM_BUF_SIZE];
+	struct sec_debug_auto_comm_buf auto_Comm_buf[SEC_DEBUG_AUTO_COMM_BUF_SIZE];
+	struct sec_debug_auto_comm_freq_info freq_info[FREQ_INFO_MAX];
+	// for code diff
+	u64 pa_text;
+	u64 pa_start_rodata;
+	int tail_magic;
+};
+
+extern void sec_debug_auto_summary_log_disable(int type);
+extern void sec_debug_auto_summary_log_once(int type);
+extern void sec_debug_set_auto_comm_last_devfreq_buf(struct sec_debug_auto_comm_freq_info *freq_info);
+extern void sec_debug_set_auto_comm_last_cpufreq_buf(struct sec_debug_auto_comm_freq_info *freq_info);
+#endif
 
 #ifdef CONFIG_SEC_DUMP_SUMMARY
 

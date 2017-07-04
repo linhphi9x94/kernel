@@ -685,7 +685,6 @@ static void exynos_ufs_get_sfr(struct ufs_hba *hba)
 static void exynos_ufs_get_attr(struct ufs_hba *hba)
 {
 	u32 i;
-	u32 intr_status;
 	u32 intr_enable;
 	struct exynos_ufs_attr_log* cfg = ufs_cfg_log_attr;
 	int j = 0;
@@ -693,14 +692,10 @@ static void exynos_ufs_get_attr(struct ufs_hba *hba)
 	/* Disable and backup interrupts */
 	intr_enable = ufshcd_readl(hba, REG_INTERRUPT_ENABLE);
 	ufshcd_writel(hba, 0, REG_INTERRUPT_ENABLE);
-	intr_status = ufshcd_readl(hba, REG_INTERRUPT_STATUS);
 
 	while(cfg) {
 		if (cfg->offset == 0)
 			break;
-
-		/* Clear UIC command completion */
-		ufshcd_writel(hba, UIC_COMMAND_COMPL, REG_INTERRUPT_STATUS);
 
 		/* Send DME_GET */
 		ufshcd_writel(hba, cfg->offset, REG_UIC_COMMAND_ARG_1);
@@ -717,6 +712,9 @@ static void exynos_ufs_get_attr(struct ufs_hba *hba)
 			}
 		}
 
+		/* Clear UIC command completion */
+		ufshcd_writel(hba, UIC_COMMAND_COMPL, REG_INTERRUPT_STATUS);
+
 		/* Fetch result and value */
 		cfg->res = ufshcd_readl(hba, REG_UIC_COMMAND_ARG_2 &
 				MASK_UIC_COMMAND_RESULT);
@@ -731,7 +729,6 @@ static void exynos_ufs_get_attr(struct ufs_hba *hba)
 
 out:
 	/* Restore and enable interrupts */
-	ufshcd_writel(hba, intr_status ^ 0xFFFFFFFF, REG_INTERRUPT_STATUS);
 	ufshcd_writel(hba, intr_enable, REG_INTERRUPT_ENABLE);
 }
 
@@ -2800,6 +2797,7 @@ static const struct ufs_hba_variant exynos_ufs_drv_data = {
 	.ops		= &exynos_ufs_ops,
 	.quirks		= UFSHCI_QUIRK_BROKEN_DWORD_UTRD |
 			  UFSHCI_QUIRK_BROKEN_REQ_LIST_CLR |
+			  UFSHCI_QUIRK_USE_ABORT_TASK |
 			  UFSHCI_QUIRK_SKIP_INTR_AGGR,
 	.vs_data	= &exynos_ufs_soc_data,
 };

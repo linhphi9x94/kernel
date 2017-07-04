@@ -365,7 +365,14 @@ set_vint:
 
 static int low_level_set_brightness(struct dsim_device *dsim ,int force)
 {
+	struct panel_private *panel = &dsim->priv;
 
+	if( panel->curr_alpm_mode != ALPM_OFF ) {
+		dsim_err( "%s : return by alpm\n", __func__ );
+		return 0;
+	}
+
+	pr_info( "%s++\n", __func__ );
 	if (dsim_write_hl_data(dsim, SEQ_TEST_KEY_ON_F0, ARRAY_SIZE(SEQ_TEST_KEY_ON_F0)) < 0)
 		dsim_err("%s : fail to write F0 on command.\n", __func__);
 
@@ -396,6 +403,7 @@ static int low_level_set_brightness(struct dsim_device *dsim ,int force)
 	if (dsim_write_hl_data(dsim, SEQ_TEST_KEY_OFF_F0, ARRAY_SIZE(SEQ_TEST_KEY_OFF_F0)) < 0)
 		dsim_err("%s : fail to write F0 on command\n", __func__);
 
+	pr_info( "%s--\n", __func__ );
 	return 0;
 }
 #endif

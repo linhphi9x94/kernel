@@ -143,9 +143,6 @@ static int check_hallic_state(char *file_path, unsigned char hall_ic_status[])
 	filep = filp_open(file_path, O_RDONLY, 0666);
 	if (IS_ERR(filep)) {
 		iRet = PTR_ERR(filep);
-		if (iRet != -ENOENT)
-			pr_err("[SX9320]: %s - file open fail [%s] - %d\n",
-				__func__, file_path, iRet);
 		set_fs(old_fs);
 		goto exit;
 	}
@@ -154,7 +151,6 @@ static int check_hallic_state(char *file_path, unsigned char hall_ic_status[])
 		sizeof(hall_sysfs), &filep->f_pos);
 
 	if (iRet != sizeof(hall_sysfs)) {
-		pr_err("[SX9320]: %s - Can't read hall ic status\n", __func__);
 		iRet = -EIO;
 	} else {
 		strncpy(hall_ic_status, hall_sysfs, sizeof(hall_sysfs));
@@ -1306,7 +1302,6 @@ static void sx9320_debug_work_func(struct work_struct *work)
 {
 	struct sx9320_p *data = container_of((struct delayed_work *)work,
 		struct sx9320_p, debug_work);
-	int ret;
 	static int hall_flag = 1;
 
 	if (atomic_read(&data->enable) == ON) {
@@ -1318,18 +1313,9 @@ static void sx9320_debug_work_func(struct work_struct *work)
 		}
 	}
 
-	ret = check_hallic_state(HALLIC1_PATH, data->hall_ic1);
-	if (ret < 0) {
-		pr_err("[SX9320]: %s - hallic 1 detect fail = %d\n",
-			__func__, ret);
-	}
-
-	ret = check_hallic_state(HALLIC2_PATH, data->hall_ic2);
-	if (ret < 0) {
-		pr_err("[SX9320]: %s - hallic 2 detect fail = %d\n",
-			__func__, ret);
-	}
-
+	check_hallic_state(HALLIC1_PATH, data->hall_ic1);
+	check_hallic_state(HALLIC2_PATH, data->hall_ic2);
+	
 	/* Hall IC closed : offset cal (once)*/
 	if (strcmp(data->hall_ic1, "CLOSE") == 0 &&
 		strcmp(data->hall_ic2, "CLOSE") == 0) {

@@ -259,11 +259,11 @@ struct max77854_charger_data {
 	int		irq_chgin;
 	int		irq_aicl;
 	/* software regulation */
-	bool		soft_reg_state;
+	bool	soft_reg_state;
 	int		soft_reg_current;
 
 	/* unsufficient power */
-	bool		reg_loop_deted;
+	bool	reg_loop_deted;
 
 	/* wireless charge, w(wpc), v(vbus) */
 	int		wc_w_gpio;
@@ -278,6 +278,10 @@ struct max77854_charger_data {
 	int		wc_pre_current;
 
 	int		jig_gpio;
+
+	bool enable_sysovlo_irq;
+	int	 irq_sysovlo;
+	struct wake_lock sysovlo_wake_lock;
 
 	bool is_mdock;
 	bool otg_on;

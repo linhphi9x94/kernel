@@ -27,7 +27,7 @@
  *
  * <<Broadcom-WL-IPTag/Open:>>
  *
- * $Id: dhd.h 652895 2016-08-04 06:04:25Z $
+ * $Id: dhd.h 674353 2016-12-08 04:07:44Z $
  */
 
 /****************
@@ -228,7 +228,8 @@ enum dhd_prealloc_index {
 	DHD_PREALLOC_DHD_WLFC_HANGER = 12,
 	DHD_PREALLOC_PKTID_MAP = 13,
 	DHD_PREALLOC_PKTID_MAP_IOCTL = 14,
-	DHD_PREALLOC_DHD_LOG_DUMP_BUF = 15
+	DHD_PREALLOC_DHD_LOG_DUMP_BUF = 15,
+	DHD_PREALLOC_DHD_LOG_DUMP_BUF_EX = 16
 };
 
 enum dhd_dongledump_mode {
@@ -276,6 +277,13 @@ enum dhd_rsdb_scan_features {
 	RSDB_SCAN_DOWNGRADED_CH_PRUNE_ROAM = 0x10,
 	/* Enable channel pruning for any SCAN */
 	RSDB_SCAN_DOWNGRADED_CH_PRUNE_ALL  = 0x20
+};
+
+enum dhd_eapol_message_type {
+	EAPOL_4WAY_M1 = 1,
+	EAPOL_4WAY_M2,
+	EAPOL_4WAY_M3,
+	EAPOL_4WAY_M4
 };
 
 /* Packet alignment for most efficient SDIO (can change based on platform) */
@@ -386,18 +394,18 @@ typedef struct {
 struct dhd_log_dump_buf
 {
 	spinlock_t lock;
+	unsigned int enable;
 	unsigned int wraparound;
 	unsigned long max;
 	unsigned int remain;
 	char* present;
 	char* front;
 	char* buffer;
+	struct dhd_log_dump_buf *next;
 };
 
-#define DHD_LOG_DUMP_BUFFER_SIZE	(1024 * 1024)
-#define DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE 256
-
-extern void dhd_log_dump_print(const char *fmt, ...);
+#define DHD_LOG_DUMP_MAX_TEMP_BUFFER_SIZE	256
+extern void dhd_log_dump_write(int type, const char *fmt, ...);
 extern char *dhd_log_dump_get_timestamp(void);
 #endif /* DHD_LOG_DUMP */
 #define DHD_COMMON_DUMP_PATH	"/data/misc/wifi/log/"
@@ -655,17 +663,18 @@ typedef struct dhd_pub {
 #endif
 	struct mutex wl_up_lock;
 	bool is_fw_download_done;
-#ifdef DHD_LOG_DUMP
-	struct dhd_log_dump_buf dld_buf;
-	unsigned int dld_enable;
-#endif /* DHD_LOG_DUMP */
 	bool max_dtim_enable;         /* use MAX bcn_li_dtim value in suspend mode */
 #if defined(PKT_FILTER_SUPPORT) && defined(APF)
 	bool apf_set;
 #endif /* PKT_FILTER_SUPPORT && APF */
 #ifdef DYNAMIC_MUMIMO_CONTROL
 	uint8 reassoc_mumimo_sw;
+	uint8 murx_block_eapol;
 #endif /* DYNAMIC_MUMIMO_CONTROL */
+	bool wbtext_support;
+#ifdef WLTDLS
+	spinlock_t tdls_lock;
+#endif /* WLTDLS */
 } dhd_pub_t;
 
 #if defined(PCIE_FULL_DONGLE)
@@ -1053,6 +1062,13 @@ extern void dhd_dpc_enable(dhd_pub_t *dhdp);
 #define WIFI_FEATURE_EPR                0x4000      /* Enhanced power reporting         */
 #define WIFI_FEATURE_AP_STA             0x8000      /* Support for AP STA Concurrency   */
 #define WIFI_FEATURE_LINKSTAT           0x10000     /* Support for Linkstats            */
+#define WIFI_FEATURE_LOGGER             0x20000     /* WiFi Logger			*/
+#define WIFI_FEATURE_HAL_EPNO           0x40000     /* WiFi PNO enhanced		*/
+#define WIFI_FEATURE_RSSI_MONITOR       0x80000     /* RSSI Monitor			*/
+#define WIFI_FEATURE_MKEEP_ALIVE        0x100000    /* WiFi mkeep_alive			*/
+#define WIFI_FEATURE_CONFIG_NDO         0x200000    /* ND offload configure		*/
+#define WIFI_FEATURE_TX_TRANSMIT_POWER  0x400000    /* Capture Tx transmit power levels	*/
+#define WIFI_FEATURE_INVALID            0xFFFFFFFF  /* Invalid Feature                  */
 
 #define MAX_FEATURE_SET_CONCURRRENT_GROUPS  3
 
@@ -1079,6 +1095,7 @@ extern int dhd_wakeup_ioctl_event(dhd_pub_t *pub, dhd_ioctl_recieved_status_t re
 
 
 extern int dhd_os_get_image_block(char * buf, int len, void * image);
+extern int dhd_os_get_image_size(void * image);
 extern void * dhd_os_open_image(char * filename);
 extern void dhd_os_close_image(void * image);
 extern void dhd_os_wd_timer(void *bus, uint wdtick);
@@ -1650,6 +1667,10 @@ extern void dhd_os_general_spin_unlock(dhd_pub_t *pub, unsigned long flags);
 #define DHD_FLOWRING_LIST_LOCK(lock, flags)       (flags) = dhd_os_spin_lock(lock)
 #define DHD_FLOWRING_LIST_UNLOCK(lock, flags)     dhd_os_spin_unlock((lock), (flags))
 
+/* Enable DHD TDLS peer list spin lock/unlock */
+#define DHD_TDLS_LOCK(lock, flags)       (flags) = dhd_os_spin_lock(lock)
+#define DHD_TDLS_UNLOCK(lock, flags)     dhd_os_spin_unlock((lock), (flags))
+
 extern void dhd_dump_to_kernelog(dhd_pub_t *dhdp);
 
 
@@ -1707,7 +1728,7 @@ int dhd_get_download_buffer(dhd_pub_t	*dhd, char *file_path, download_type_t com
 
 void dhd_free_download_buffer(dhd_pub_t	*dhd, void *buffer, int length);
 
-int dhd_download_clm_blob(dhd_pub_t *dhd, unsigned char *buf, uint32 len);
+int dhd_download_clm_blob(dhd_pub_t *dhd, unsigned char *image, uint32 len);
 
 int dhd_apply_default_clm(dhd_pub_t *dhd, char *clm_path);
 #ifdef DHD_USE_CLMINFO_PARSER
@@ -1793,6 +1814,14 @@ extern void dhd_memdump_work_schedule(dhd_pub_t *dhdp, unsigned long msecs);
 
 extern bool dhd_query_bus_erros(dhd_pub_t *dhdp);
 
+#ifdef DHD_LEGACY_FILE_PATH
+#define PLATFORM_PATH	"/data/"
+#elif defined(PLATFORM_SLP)
+#define PLATFORM_PATH	"/opt/etc/"
+#else
+#define PLATFORM_PATH	"/data/misc/conn/"
+#endif /* DHD_LEGACY_FILE_PATH */
+
 /*
  * Enable this macro if you want to track the calls to wake lock
  * This records can be printed using the following command
@@ -1818,5 +1847,20 @@ extern int dhd_prot_debug_info_print(dhd_pub_t *dhd);
 #ifdef DHD_PKTID_AUDIT_ENABLED
 void dhd_pktid_audit_fail_cb(dhd_pub_t *dhdp);
 #endif /* DHD_PKTID_AUDIT_ENABLED */
+
+int dhd_check_eapol_4way_message(char *dump_data);
+void dhd_dump_eapol_4way_message(char *ifname, char *dump_data, bool direction);
+#ifdef DYNAMIC_MUMIMO_CONTROL
+#if defined(ARGOS_CPU_SCHEDULER) && defined(ARGOS_RPS_CPU_CTL)
+void argos_config_mumimo_reset(void);
+#endif /* ARGOS_CPU_SCHEDULER && ARGOS_RPS_CPU_CTL */
+#endif /* DYNAMIC_MUMIMO_CONTROL */
+
+#if defined(CONFIG_64BIT)
+#define DHD_SUPPORT_64BIT
+#elif defined(DHD_EFI)
+#define DHD_SUPPORT_64BIT
+/* by default disabled for other platforms, can enable appropriate macro to enable 64 bit support */
+#endif /* (linux || LINUX) && CONFIG_64BIT */
 
 #endif /* _dhd_h_ */

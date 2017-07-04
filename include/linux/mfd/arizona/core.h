@@ -193,6 +193,8 @@ struct arizona {
 
 	struct mutex rate_lock;
 	struct mutex dspclk_ena_lock;
+
+	bool moisture_detected;
 };
 
 int arizona_clk32k_enable(struct arizona *arizona);

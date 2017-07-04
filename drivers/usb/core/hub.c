@@ -359,8 +359,7 @@ static void usb_set_lpm_parameters(struct usb_device *udev)
 }
 
 /* USB 2.0 spec Section 11.24.4.5 */
-static int get_hub_descriptor(struct usb_device *hdev,
-		struct usb_hub_descriptor *desc)
+static int get_hub_descriptor(struct usb_device *hdev, void *data)
 {
 	int i, ret, size;
 	unsigned dtype;
@@ -376,18 +375,10 @@ static int get_hub_descriptor(struct usb_device *hdev,
 	for (i = 0; i < 3; i++) {
 		ret = usb_control_msg(hdev, usb_rcvctrlpipe(hdev, 0),
 			USB_REQ_GET_DESCRIPTOR, USB_DIR_IN | USB_RT_HUB,
-			dtype << 8, 0, desc, size,
+			dtype << 8, 0, data, size,
 			USB_CTRL_GET_TIMEOUT);
-		if (hub_is_superspeed(hdev)) {
-			if (ret == size)
-				return ret;
-		} else if (ret >= USB_DT_HUB_NONVAR_SIZE + 2) {
-			/* Make sure we have the DeviceRemovable field. */
-			size = USB_DT_HUB_NONVAR_SIZE + desc->bNbrPorts / 8 + 1;
-			if (ret < size)
-				return -EMSGSIZE;
+		if (ret >= (USB_DT_HUB_NONVAR_SIZE + 2))
 			return ret;
-		}
 	}
 	return -EINVAL;
 }
@@ -1337,7 +1328,7 @@ static int hub_configure(struct usb_hub *hub,
 	}
 	mutex_init(&hub->status_mutex);
 
-	hub->descriptor = kzalloc(sizeof(*hub->descriptor), GFP_KERNEL);
+	hub->descriptor = kmalloc(sizeof(*hub->descriptor), GFP_KERNEL);
 	if (!hub->descriptor) {
 		ret = -ENOMEM;
 		goto fail;
@@ -1345,19 +1336,13 @@ static int hub_configure(struct usb_hub *hub,
 
 	/* Request the entire hub descriptor.
 	 * hub->descriptor can handle USB_MAXCHILDREN ports,
-	 * but a (non-SS) hub can/will return fewer bytes here.
+	 * but the hub can/will return fewer bytes here.
 	 */
 	ret = get_hub_descriptor(hdev, hub->descriptor);
 	if (ret < 0) {
 		message = "can't read hub descriptor";
 		goto fail;
-	}
-
-	maxchild = USB_MAXCHILDREN;
-	if (hub_is_superspeed(hdev))
-		maxchild = min_t(unsigned, maxchild, USB_SS_MAXPORTS);
-
-	if (hub->descriptor->bNbrPorts > maxchild) {
+	} else if (hub->descriptor->bNbrPorts > USB_MAXCHILDREN) {
 		message = "hub has too many ports!";
 		ret = -ENODEV;
 		goto fail;
@@ -2120,12 +2105,6 @@ void usb_disconnect(struct usb_device **pdev)
 	dev_info(&udev->dev, "USB disconnect, device number %d\n",
 			udev->devnum);
 
-	/*
-	 * Ensure that the pm runtime code knows that the USB device
-	 * is in the process of being disconnected.
-	 */
-	pm_runtime_barrier(&udev->dev);
-
 	usb_lock_device(udev);
 
 	hub_disconnect_children(udev);
@@ -2642,15 +2621,8 @@ static int hub_port_wait_reset(struct usb_hub *hub, int port1,
 		if (ret < 0)
 			return ret;
 
-		/*
-		 * The port state is unknown until the reset completes.
-		 *
-		 * On top of that, some chips may require additional time
-		 * to re-establish a connection after the reset is complete,
-		 * so also wait for the connection to be re-established.
-		 */
-		if (!(portstatus & USB_PORT_STAT_RESET) &&
-		    (portstatus & USB_PORT_STAT_CONNECTION))
+		/* The port state is unknown until the reset completes. */
+		if (!(portstatus & USB_PORT_STAT_RESET))
 			break;
 
 		/* switch to the long delay after two short delay failures */
@@ -4201,7 +4173,7 @@ static void hub_set_initial_usb2_lpm_policy(struct usb_device *udev)
 	struct usb_hub *hub = usb_hub_to_struct_hub(udev->parent);
 	int connect_type = USB_PORT_CONNECT_TYPE_UNKNOWN;
 
-	if (!udev->usb2_hw_lpm_capable || !udev->bos)
+	if (!udev->usb2_hw_lpm_capable)
 		return;
 
 	if (hub)
@@ -4433,7 +4405,11 @@ hub_port_init (struct usb_hub *hub, struct usb_device *udev, int port1,
 		if (udev->wusb == 0) {
 			for (operations = 0; operations < SET_ADDRESS_TRIES; ++operations) {
 				retval = hub_set_address(udev, devnum);
+#if defined(CONFIG_SEC_FACTORY)
+				if (retval >= 0 || retval == -ETIME)
+#else
 				if (retval >= 0)
+#endif
 					break;
 				msleep(200);
 			}
@@ -4824,7 +4800,11 @@ loop:
 		release_devnum(udev);
 		hub_free_dev(udev);
 		usb_put_dev(udev);
+#if defined(CONFIG_SEC_FACTORY)
+		if ((status == -ENOTCONN) || (status == -ENOTSUPP) || (status == -ETIME))
+#else
 		if ((status == -ENOTCONN) || (status == -ENOTSUPP))
+#endif
 			break;
 	}
 	if (hub->hdev->parent ||

@@ -2003,13 +2003,10 @@ static int crypt_map(struct dm_target *ti, struct bio *bio)
 	crypt_io_init(io, cc, bio, dm_target_offset(ti, bio->bi_iter.bi_sector));
 	io->ctx.req = (struct ablkcipher_request *)(io + 1);
 
-	if (cc->hw_fmp == 1)
-		if (bio_data_dir(io->base_bio) == READ) {
-			if (kcryptd_io_rw(io, GFP_NOWAIT))
-				kcryptd_queue_io(io);
-		} else
+	if (cc->hw_fmp == 1) {
+		if (kcryptd_io_rw(io, GFP_NOWAIT))
 			kcryptd_queue_io(io);
-	else {
+	} else {
 		if (bio_data_dir(io->base_bio) == READ) {
 			if (kcryptd_io_read(io, GFP_NOWAIT))
 				kcryptd_queue_io(io);

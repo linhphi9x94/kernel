@@ -24,6 +24,7 @@
 #include <linux/firmware.h>
 #include <linux/sec_sysfs.h>
 #include <linux/uaccess.h>
+#include <linux/vmalloc.h>
 #include "sec_ts.h"
 #ifdef CONFIG_TRUSTONIC_TRUSTED_UI
 #include <linux/t-base-tui.h>
@@ -82,8 +83,6 @@ static DEVICE_ATTR(cmd_list, S_IRUGO, cmd_list_show, NULL);
 static DEVICE_ATTR(scrub_pos, S_IRUGO, scrub_position_show, NULL);
 static DEVICE_ATTR(edge_pos, S_IRUGO, edge_x_position, NULL);
 
-static int execute_selftest(struct sec_ts_data *ts);
-
 static void fw_update(void *device_data);
 static void get_fw_ver_bin(void *device_data);
 static void get_fw_ver_ic(void *device_data);
@@ -95,6 +94,7 @@ static void get_chip_vendor(void *device_data);
 static void get_chip_name(void *device_data);
 static void set_mis_cal_spec(void *device_data);
 static void get_mis_cal_info(void *device_data);
+static void get_wet_mode(void *device_data);
 static void get_x_num(void *device_data);
 static void get_y_num(void *device_data);
 static void get_x_cross_routing(void *device_data);
@@ -147,6 +147,10 @@ static void set_tunning_data(void *device_data);
 #ifdef TWO_LEVEL_GRIP_CONCEPT
 static void set_grip_data(void *device_data);
 #endif
+#ifdef CONFIG_TOUCHSCREEN_SUPPORT_MULTIMEDIA
+static void brush_enable(void *device_data);
+static void velocity_enable(void *device_data);
+#endif
 static void not_support_cmd(void *device_data);
 
 #ifdef CONFIG_TRUSTONIC_TRUSTED_UI
@@ -167,6 +171,7 @@ struct ft_cmd ft_cmds[] = {
 	{FT_CMD("get_chip_name", get_chip_name),},
 	{FT_CMD("set_mis_cal_spec", set_mis_cal_spec),},
 	{FT_CMD("get_mis_cal_info", get_mis_cal_info),},
+	{FT_CMD("get_wet_mode", get_wet_mode),},	
 	{FT_CMD("get_x_num", get_x_num),},
 	{FT_CMD("get_y_num", get_y_num),},
 	{FT_CMD("get_x_cross_routing", get_x_cross_routing),},
@@ -219,8 +224,138 @@ struct ft_cmd ft_cmds[] = {
 	{FT_CMD("set_grip_data", set_grip_data),},
 #endif
 	{FT_CMD("set_log_level", set_log_level),},
+#ifdef CONFIG_TOUCHSCREEN_SUPPORT_MULTIMEDIA
+	{FT_CMD("velocity_enable", velocity_enable),},
+	{FT_CMD("brush_enable", brush_enable),},   
+#endif
 	{FT_CMD("not_support_cmd", not_support_cmd),},
 };
+
+#ifdef USE_HW_PARAMETER
+static ssize_t read_ito_check_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct sec_ts_data *ts = dev_get_drvdata(dev);
+	char buff[256] = { 0 };
+
+	input_info(true, &ts->client->dev, "%s: %02X%02X%02X%02X\n", __func__,
+		ts->ito_test[0], ts->ito_test[1],
+		ts->ito_test[2], ts->ito_test[3]);
+
+	snprintf(buff, sizeof(buff), "%02X%02X%02X%02X",
+		ts->ito_test[0], ts->ito_test[1],
+		ts->ito_test[2], ts->ito_test[3]);
+
+	return snprintf(buf, SEC_CMD_BUF_SIZE, "%s", buff);
+}
+
+static ssize_t read_raw_check_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct sec_ts_data *ts = dev_get_drvdata(dev);
+	int ii, ret = 0;
+	char temp[CMD_RESULT_WORD_LEN] = { 0 };
+	char *buffer = NULL;
+/*
+ * read rawcap / ambient data
+ */
+
+	buffer = vzalloc(ts->rx_count * ts->tx_count * 6);
+	if (!buffer)
+		return -ENOMEM;
+	
+	memset(buffer, 0x00, ts->rx_count * ts->tx_count * 6);
+
+	for (ii = 0; ii < (ts->rx_count * ts->tx_count - 1); ii++) {
+		snprintf(temp, CMD_RESULT_WORD_LEN, "%d ", ts->pFrame[ii]);
+		strncat(buffer, temp, CMD_RESULT_WORD_LEN);
+	
+		memset(temp, 0x00, CMD_RESULT_WORD_LEN);
+	}
+
+	snprintf(temp, CMD_RESULT_WORD_LEN, "%d", ts->pFrame[ii]);
+	strncat(buffer, temp, CMD_RESULT_WORD_LEN);
+
+	ret = snprintf(buf, ts->rx_count * ts->tx_count * 6, buffer);
+	vfree(buffer);
+
+	return ret;
+}
+
+static ssize_t read_multi_count_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct sec_ts_data *ts = dev_get_drvdata(dev);
+	char buff[256] = { 0 };
+
+	input_info(true, &ts->client->dev, "%s: %d\n", __func__,
+		ts->multi_count);
+
+	snprintf(buff, sizeof(buff), "%d", ts->multi_count);
+
+	ts->multi_count = 0;
+
+	return snprintf(buf, SEC_CMD_BUF_SIZE, "%s", buff);
+}
+
+static ssize_t read_wet_mode_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct sec_ts_data *ts = dev_get_drvdata(dev);
+	char buff[256] = { 0 };
+
+	input_info(true, &ts->client->dev, "%s: %d, %d\n", __func__,
+		ts->wet_count, ts->dive_count);
+
+	snprintf(buff, sizeof(buff), "%d",
+		ts->wet_count);
+
+	ts->wet_count = 0;
+	ts->dive_count= 0;
+
+	return snprintf(buf, SEC_CMD_BUF_SIZE, "%s", buff);
+}
+
+static ssize_t read_comm_err_count_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct sec_ts_data *ts = dev_get_drvdata(dev);
+	char buff[256] = { 0 };
+
+	input_info(true, &ts->client->dev, "%s: %d\n", __func__,
+		ts->multi_count);
+
+	snprintf(buff, sizeof(buff), "%d", ts->comm_err_count);
+
+	ts->comm_err_count = 0;
+
+	return snprintf(buf, SEC_CMD_BUF_SIZE, "%s", buff);
+}
+
+static ssize_t read_module_id_show(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	struct sec_ts_data *ts = dev_get_drvdata(dev);
+	char buff[256] = { 0 };
+
+	input_info(true, &ts->client->dev, "%s: %d\n", __func__,
+		ts->multi_count);
+
+	snprintf(buff, sizeof(buff), "SE%02X%02X%02X%02X%02X",
+		ts->plat_data->panel_revision, ts->plat_data->img_version_of_bin[2],
+		ts->plat_data->img_version_of_bin[3], ts->nv, ts->cal_count);
+
+	return snprintf(buf, SEC_CMD_BUF_SIZE, "%s", buff);
+}
+
+static DEVICE_ATTR(ito_check, S_IRUGO, read_ito_check_show, NULL);
+static DEVICE_ATTR(raw_check, S_IRUGO, read_raw_check_show, NULL);
+static DEVICE_ATTR(multi_count, S_IRUGO, read_multi_count_show, NULL);
+static DEVICE_ATTR(wet_mode, S_IRUGO, read_wet_mode_show, NULL);
+static DEVICE_ATTR(comm_err_count, S_IRUGO, read_comm_err_count_show, NULL);
+static DEVICE_ATTR(module_id, S_IRUGO, read_module_id_show, NULL);
+#endif
+
 
 static struct attribute *cmd_attributes[] = {
 	&dev_attr_cmd.attr,
@@ -229,6 +364,14 @@ static struct attribute *cmd_attributes[] = {
 	&dev_attr_cmd_result.attr,
 	&dev_attr_scrub_pos.attr,
 	&dev_attr_edge_pos.attr,
+#ifdef USE_HW_PARAMETER
+	&dev_attr_ito_check.attr,
+	&dev_attr_raw_check.attr,
+	&dev_attr_multi_count.attr,
+	&dev_attr_wet_mode.attr,
+	&dev_attr_comm_err_count.attr,
+	&dev_attr_module_id.attr,
+#endif
 	NULL,
 };
 
@@ -343,6 +486,11 @@ static ssize_t cmd_store(struct device *dev, struct device_attribute *attr,
 		return -EINVAL;
 	}
 
+	if (strlen(buf) >= CMD_STR_LEN) {		
+		input_err(true, &ts->client->dev, "%s: cmd length is over (%s,%d)!!\n", __func__, buf, (int)strlen(buf));
+		return -EINVAL;
+	}
+
 #if 1
 	if (ts->cmd_is_running == true) {
 		input_err(true, &ts->client->dev, "%s: other cmd is running.\n", __func__);
@@ -427,7 +575,7 @@ static ssize_t cmd_store(struct device *dev, struct device_attribute *attr,
 				start = pos + 1;
 			}
 			pos++;
-		} while (pos - buf <= length);
+		} while ((pos - buf <= length) && (param_cnt < CMD_PARAM_NUM));
 	}
 
 	input_err(true, &ts->client->dev, "%s: Command = %s\n", __func__, buf);
@@ -763,7 +911,7 @@ int sec_ts_read_frame(struct sec_ts_data *ts, u8 type, short *min, short *max)
 
 ErrorRelease:
 	/* release data monitory (unprepare AFE data memory) */
-	ret = ts->sec_ts_i2c_read(ts, SEC_TS_CMD_MUTU_RAW_TYPE, &mode, 1);
+	ret = ts->sec_ts_i2c_write(ts, SEC_TS_CMD_MUTU_RAW_TYPE, &mode, 1);
 	if (ret < 0)
 		input_err(true, &ts->client->dev, "%s: set rawdata failed!\n", __func__);
 
@@ -920,7 +1068,7 @@ out_read_channel:
 }
 
 
-static int sec_ts_read_raw_data(struct sec_ts_data *ts, struct sec_ts_test_mode *mode)
+int sec_ts_read_raw_data(struct sec_ts_data *ts, struct sec_ts_test_mode *mode)
 {
 	int ii;
 	int ret = 0;
@@ -1317,6 +1465,36 @@ NG:
 }
 
 
+static void get_wet_mode(void *device_data)
+{
+	struct sec_ts_data *ts = (struct sec_ts_data *)device_data;
+	char buff[16] = { 0 };
+	char wet_mode_info = 0;
+	int ret;
+
+	set_default_result(ts);
+
+	ret = ts->sec_ts_i2c_read(ts, SEC_TS_CMD_WET_MODE, &wet_mode_info, 1);
+	if (ret < 0) {
+		input_err(true, &ts->client->dev, "%s: i2c fail!, %d\n", __func__, ret);
+		goto NG;
+	}
+
+	snprintf(buff, sizeof(buff), "%d", wet_mode_info);
+	set_cmd_result(ts, buff, strnlen(buff, sizeof(buff)));
+	ts->cmd_state = CMD_STATUS_OK;
+	input_info(true, &ts->client->dev, "%s: %s\n", __func__, buff);
+	return;
+
+NG:
+	snprintf(buff, sizeof(buff), "NG");
+	set_cmd_result(ts, buff, strnlen(buff, sizeof(buff)));
+	ts->cmd_state = CMD_STATUS_FAIL;
+	input_info(true, &ts->client->dev, "%s: %s\n", __func__, buff);
+
+}
+
+
 static void get_x_num(void *device_data)
 {
 	struct sec_ts_data *ts = (struct sec_ts_data *)device_data;
@@ -1415,7 +1593,7 @@ static void get_checksum_data(void *device_data)
 	for (i = 0; i < 4; i++)
 		csum += csum_result[i];
 
-	csum += temp;
+	csum += nv_result;
 	csum += cal_result;
 	csum = ~csum;
 
@@ -2561,7 +2739,7 @@ static void rearrange_sft_result(u8 *data, int length)
 	}
 }
 
-static int execute_selftest(struct sec_ts_data *ts)
+int execute_selftest(struct sec_ts_data *ts)
 {
 	int rc;
 	u8 tpara = 0x23;
@@ -3045,6 +3223,7 @@ OUT:
 	ts->cmd_state = CMD_STATUS_WAITING;
 };
 
+#ifdef CONFIG_EPEN_WACOM_W9018
 int set_spen_mode(int mode)
 {
 	int ret;
@@ -3069,6 +3248,7 @@ int set_spen_mode(int mode)
 }
 
 EXPORT_SYMBOL(set_spen_mode);
+#endif
 
 static void set_tsp_disable_mode(void *device_data)
 {
@@ -3493,16 +3673,17 @@ void set_grip_data_to_ic(struct sec_ts_data *ts, u8 flag) {
 			data[2] = ts->grip_edgehandler_end_y & 0xFF;
 			data[3] = (ts->grip_edgehandler_direction) & 0x3;
 		}
-		ts->sec_ts_i2c_write(ts, SEC_TS_CMD_EDGE_HANDLER, data, 4); 	
-		input_info(true, &ts->client->dev, "%s: 0x30 %2X,%2X,%2X,%2X \n", __func__, data[0], data[1], data[2], data[3]);
+		ts->sec_ts_i2c_write(ts, ts->gripreg_edge_handler, data, 4); 	
+		input_info(true, &ts->client->dev, "%s: 0x%2X %2X,%2X,%2X,%2X \n", __func__, \
+			ts->gripreg_edge_handler, data[0], data[1], data[2], data[3]);
 	}
 
 	if (flag & G_SET_EDGE_ZONE) {
 		data[0] = (ts->grip_edge_range >> 8) & 0xFF;
 		data[1] = ts->grip_edge_range  & 0xFF;
-		ts->sec_ts_i2c_write(ts, SEC_TS_CMD_EDGE_AREA, data, 2);		
-		input_info(true, &ts->client->dev, "%s: 0x31 %2X,%2X \n", __func__, data[0], data[1]);
-
+		ts->sec_ts_i2c_write(ts, ts->gripreg_edge_area, data, 2);		
+		input_info(true, &ts->client->dev, "%s: 0x%2X %2X,%2X \n", __func__, \
+			ts->gripreg_edge_area, data[0], data[1]);
 	}
 
 	if (flag & G_SET_NORMAL_MODE) {
@@ -3510,8 +3691,9 @@ void set_grip_data_to_ic(struct sec_ts_data *ts, u8 flag) {
 		data[1] = ts->grip_deadzone_dn_x & 0xFF;
 		data[2] = (ts->grip_deadzone_y >> 8) & 0xFF;
 		data[3] = ts->grip_deadzone_y & 0xFF;
-		ts->sec_ts_i2c_write(ts, SEC_TS_CMD_DEAD_ZONE, data, 4); 	
-		input_info(true, &ts->client->dev, "%s: 0x32 %2X,%2X,%2X,%2X \n", __func__, data[0], data[1], data[2], data[3]);
+		ts->sec_ts_i2c_write(ts, ts->gripreg_dead_zone, data, 4); 	
+		input_info(true, &ts->client->dev, "%s: 0x%2X %2X,%2X,%2X,%2X \n", __func__, \
+			ts->gripreg_dead_zone, data[0], data[1], data[2], data[3]);
 	}
 
 	if (flag & G_SET_LANDSCAPE_MODE) {
@@ -3519,14 +3701,16 @@ void set_grip_data_to_ic(struct sec_ts_data *ts, u8 flag) {
 		data[1] = (ts->grip_landscape_edge >> 4) & 0xFF;
 		data[2] = (ts->grip_landscape_edge << 4 & 0xF0) | ((ts->grip_landscape_deadzone >> 8) & 0xF);
 		data[3] = ts->grip_landscape_deadzone & 0xFF;
-		ts->sec_ts_i2c_write(ts, SEC_TS_CMD_LANDSCAPE_MODE, data, 4); 	
-		input_info(true, &ts->client->dev, "%s: 0x33 %2X,%2X,%2X,%2X \n", __func__, data[0], data[1], data[2], data[3]);
+		ts->sec_ts_i2c_write(ts, ts->gripreg_landscape_mode, data, 4); 	
+		input_info(true, &ts->client->dev, "%s: 0x%2X %2X,%2X,%2X,%2X \n", __func__, \
+			ts->gripreg_landscape_mode, data[0], data[1], data[2], data[3]);
 	}
 	
 	if (flag & G_CLR_LANDSCAPE_MODE) {
 		data[0] = ts->grip_landscape_mode;
-		ts->sec_ts_i2c_write(ts, SEC_TS_CMD_LANDSCAPE_MODE, data, 1); 	
-		input_info(true, &ts->client->dev, "%s: 0x33 %2X \n", __func__, data[0]);
+		ts->sec_ts_i2c_write(ts, ts->gripreg_landscape_mode, data, 1); 	
+		input_info(true, &ts->client->dev, "%s: 0x%2X %2X \n", __func__, \
+			ts->gripreg_landscape_mode, data[0]);
 	}
 
 }
@@ -3559,7 +3743,7 @@ static void set_grip_data(void *device_data)
 
 	memset(buff, 0, sizeof(buff));
 
-	if(!(ts->plat_data->grip_concept & 0x2)){
+	if(!(ts->plat_data->grip_concept & 0x6)){	// 0x2 : grace, 0x4 : dual mode for hero2
 		input_info(true, &ts->client->dev, "%s: can't set, because %d concept\n", \
 			__func__, ts->plat_data->grip_concept);
 		goto err_grip_data;
@@ -3650,6 +3834,63 @@ err_grip_data:
 }
 #endif
 
+#ifdef CONFIG_TOUCHSCREEN_SUPPORT_MULTIMEDIA
+static void brush_enable(void *device_data)
+{
+	struct sec_ts_data *ts = (struct sec_ts_data *)device_data;
+	set_default_result(ts);
+
+	if (ts->cmd_param[0] < 0 || ts->cmd_param[0] > 1) {
+		snprintf(ts->cmd_buff, sizeof(ts->cmd_buff), "NG");
+		ts->cmd_state = CMD_STATUS_FAIL;
+	} else {
+		if (ts->brush_enable != (ts->cmd_param[0] ? true : false)) {
+					ts->brush_enable = ts->cmd_param[0] ? true : false;
+		}
+		input_err(true, &ts->client->dev, "%s enable ts = %d \n", __func__, ts->brush_enable );
+		snprintf(ts->cmd_buff, sizeof(ts->cmd_buff), "OK");
+		ts->cmd_state = CMD_STATUS_OK;
+	}
+
+	set_cmd_result(ts, ts->cmd_buff, strlen(ts->cmd_buff));
+	mutex_lock(&ts->cmd_lock);
+	ts->cmd_is_running = false;
+	mutex_unlock(&ts->cmd_lock);
+
+	ts->cmd_state = CMD_STATUS_WAITING;
+
+	return;
+}
+
+static void velocity_enable(void *device_data)
+{
+
+	struct sec_ts_data *ts = (struct sec_ts_data *)device_data;
+	set_default_result(ts);
+
+	if (ts->cmd_param[0] < 0 || ts->cmd_param[0] > 1) {
+		snprintf(ts->cmd_buff, sizeof(ts->cmd_buff), "NG");
+		ts->cmd_state = CMD_STATUS_FAIL;
+	} else {
+		
+		if (ts->velocity_enable != (ts->cmd_param[0] ? true : false)) {
+					ts->velocity_enable = ts->cmd_param[0] ? true : false;
+		}
+		input_err(true, &ts->client->dev, " %s enable ts = %d \n", __func__, ts->velocity_enable );
+		snprintf(ts->cmd_buff, sizeof(ts->cmd_buff), "OK");
+		ts->cmd_state = CMD_STATUS_OK;
+	}
+
+	set_cmd_result(ts, ts->cmd_buff, strlen(ts->cmd_buff));
+	mutex_lock(&ts->cmd_lock);
+	ts->cmd_is_running = false;
+	mutex_unlock(&ts->cmd_lock);
+
+	ts->cmd_state = CMD_STATUS_WAITING;
+
+	return;
+}
+#endif
 
 static void not_support_cmd(void *device_data)
 {

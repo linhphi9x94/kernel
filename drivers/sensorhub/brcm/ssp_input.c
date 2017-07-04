@@ -346,6 +346,26 @@ void report_pressure_data(struct ssp_data *data, struct sensor_value *predata)
 
 void report_light_data(struct ssp_data *data, struct sensor_value *lightdata)
 {
+<<<<<<< HEAD
+=======
+	if((data->sensor_dump_flag_light==true))
+	{
+		if(data->light_log_cnt!=0)
+		{
+			/*If current light sensor data is same with previous sensor data*/
+			if(	(data->buf[LIGHT_SENSOR].r != lightdata->r) ||
+				(data->buf[LIGHT_SENSOR].g != lightdata->g) ||
+				(data->buf[LIGHT_SENSOR].b != lightdata->b) ||
+				(data->buf[LIGHT_SENSOR].w != lightdata->w) ||
+				(data->buf[LIGHT_SENSOR].a_time != lightdata->a_time) ||
+				(data->buf[LIGHT_SENSOR].a_gain != lightdata->a_gain))
+			{
+				data->sensor_dump_flag_light = false;
+			}
+		}
+	}
+	
+>>>>>>> 7916c2a... samsung: DQE7 Kernel
 #ifdef CONFIG_SENSORS_SSP_LIGHT_REPORT_LUX
 	data->buf[LIGHT_SENSOR].lux = lightdata->lux;
 	data->buf[LIGHT_SENSOR].cct = lightdata->cct;
@@ -442,6 +462,7 @@ void report_prox_data(struct ssp_data *data, struct sensor_value *proxdata)
 	ts_high = (u32)((proxdata->timestamp)>>32);
 	ts_low = (u32)((proxdata->timestamp)&0x00000000ffffffff);
 	
+	data->sensor_dump_flag_proximity = false;
 	ssp_dbg("[SSP] Proximity Sensor Detect : %u, raw : %u ts : %llu %d %d\n",
 		proxdata->prox[0], proxdata->prox[1], proxdata->timestamp, ts_high, ts_low);
 

@@ -451,6 +451,7 @@ void netif_tx_flowctl(struct modem_shared *msd, bool tx_stop)
 {
 	struct io_device *iod;
 
+	spin_lock(&msd->active_list_lock);
 	list_for_each_entry(iod, &msd->activated_ndev_list, node_ndev) {
 		if (tx_stop) {
 			netif_stop_subqueue(iod->ndev, 0);
@@ -468,6 +469,7 @@ void netif_tx_flowctl(struct modem_shared *msd, bool tx_stop)
 #endif
 		}
 	}
+	spin_unlock(&msd->active_list_lock);
 
 	return;
 }

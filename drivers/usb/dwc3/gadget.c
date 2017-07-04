@@ -1786,6 +1786,7 @@ static int dwc3_gadget_vbus_session(struct usb_gadget *g, int is_active)
 {
 	struct dwc3 *dwc = gadget_to_dwc(g);
 	unsigned long flags;
+	int ret;
 
 	if (!dwc->dotg)
 		return -EPERM;
@@ -1810,7 +1811,16 @@ static int dwc3_gadget_vbus_session(struct usb_gadget *g, int is_active)
 			 * Both vbus was activated by otg and pullup was
 			 * signaled by the gadget driver.
 			 */
-			dwc3_gadget_run_stop(dwc, 1, false);
+			ret = dwc3_gadget_run_stop(dwc, 1, false);
+
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+			if (ret == 0 )
+				store_usblog_notify(NOTIFY_USBSTATE,
+							(void *)"USB_STATE=VBUS:EN:SUCCESS", NULL);
+			else
+				store_usblog_notify(NOTIFY_USBSTATE,
+							(void *)"USB_STATE=VBUS:EN:FAIL", NULL);
+#endif
 		} else {
 #ifdef CONFIG_USB_ANDROID_SAMSUNG_COMPOSITE
 			dwc3_gadget_cable_connect(dwc,false);
@@ -1818,7 +1828,16 @@ static int dwc3_gadget_vbus_session(struct usb_gadget *g, int is_active)
 			dwc->gadget.speed = USB_SPEED_UNKNOWN;
 			dwc->setup_packet_pending = false;
 #endif
-			dwc3_gadget_run_stop(dwc, 0, false);
+			ret = dwc3_gadget_run_stop(dwc, 0, false);
+
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+			if (ret == 0 )
+				store_usblog_notify(NOTIFY_USBSTATE,
+							(void *)"USB_STATE=VBUS:DIS:SUCCESS", NULL);
+			else
+				store_usblog_notify(NOTIFY_USBSTATE,
+							(void *)"USB_STATE=VBUS:DIS:FAIL", NULL);
+#endif
 		}
 	}
 
@@ -1885,6 +1904,26 @@ static int dwc3_gadget_pullup(struct usb_gadget *g, int is_on)
 	}
 
 	ret = dwc3_gadget_run_stop(dwc, is_on, false);
+#ifdef CONFIG_USB_NOTIFY_PROC_LOG
+	if (ret == 0 )
+	{
+		if (is_on)
+			store_usblog_notify(NOTIFY_USBSTATE,
+						(void *)"USB_STATE=PULLUP:EN:SUCCESS", NULL);
+		else
+			store_usblog_notify(NOTIFY_USBSTATE,
+						(void *)"USB_STATE=PULLUP:DIS:SUCCESS", NULL);
+	}
+	else
+	{
+		if (is_on)
+			store_usblog_notify(NOTIFY_USBSTATE,
+						(void *)"USB_STATE=PULLUP:DIS:FAIL", NULL);
+		else
+			store_usblog_notify(NOTIFY_USBSTATE,
+						(void *)"USB_STATE=PULLUP:DIS:FAIL", NULL);
+	}
+#endif
 	spin_unlock_irqrestore(&dwc->lock, flags);
 
 	return ret;
@@ -2949,8 +2988,15 @@ static void dwc3_gadget_interrupt(struct dwc3 *dwc,
 		printk(KERN_DEBUG"usb: %s RESET \n",__func__);
 		dwc3_gadget_reset_interrupt(dwc);
 #ifdef CONFIG_USB_NOTIFY_PROC_LOG
-		store_usblog_notify(NOTIFY_USBSTATE,
-					(void *)"USB_STATE=RESET", NULL);
+		if (dwc->gadget.speed == USB_SPEED_FULL)
+			store_usblog_notify(NOTIFY_USBSTATE,
+						(void *)"USB_STATE=RESET:FULL", NULL);
+		else if (dwc->gadget.speed == USB_SPEED_HIGH)
+			store_usblog_notify(NOTIFY_USBSTATE,
+						(void *)"USB_STATE=RESET:HIGH", NULL);
+		else if (dwc->gadget.speed == USB_SPEED_SUPER)
+			store_usblog_notify(NOTIFY_USBSTATE,
+						(void *)"USB_STATE=RESET:SUPER", NULL);
 #endif
 		break;
 	case DWC3_DEVICE_EVENT_CONNECT_DONE:

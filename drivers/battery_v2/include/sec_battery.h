@@ -59,7 +59,15 @@
 #define SIOP_EVENT_NONE 	0x0000
 #define SIOP_EVENT_WPC_CALL 	0x0001
 
-#if defined(CONFIG_CHARGING_VZWCONCEPT)
+#if defined(CONFIG_SEC_FACTORY)
+#if defined(CONFIG_STORE_MODE)
+#define STORE_MODE_CHARGING_MAX 50
+#define STORE_MODE_CHARGING_MIN 40
+#else
+#define STORE_MODE_CHARGING_MAX 80
+#define STORE_MODE_CHARGING_MIN 70
+#endif //(CONFIG_STORE_MODE)
+#elif defined(CONFIG_CHARGING_VZWCONCEPT)
 #define STORE_MODE_CHARGING_MAX 35
 #define STORE_MODE_CHARGING_MIN 30
 #else
@@ -100,8 +108,8 @@
 #define SEC_INPUT_VOLTAGE_10V	10
 #define SEC_INPUT_VOLTAGE_12V	12
 
-#define LCD_ON_CAPACITY_THRESHOLD	5
-#define LCD_OFF_CAPACITY_THRESHOLD	10
+#define LCD_ON_CAPACITY_THRESHOLD	2
+#define LCD_OFF_CAPACITY_THRESHOLD	2
 
 #if defined(CONFIG_CCIC_NOTIFIER)
 struct sec_bat_pdic_info {
@@ -139,6 +147,14 @@ struct adc_sample_info {
 #define CISD_STATE_VOLT_DROP	0x02
 #define CISD_STATE_SOC_DROP		0x04
 #define CISD_STATE_RESET		0x08
+#define CISD_STATE_LEAK_A		0x10
+#define CISD_STATE_LEAK_B		0x20
+#define CISD_STATE_LEAK_C		0x40
+#define CISD_STATE_LEAK_D		0x80
+#define CISD_STATE_OVER_VOLTAGE		0x100
+#define CISD_STATE_LEAK_E		0x200
+#define CISD_STATE_LEAK_F		0x400
+#define CISD_STATE_LEAK_G		0x800
 
 #define CISD_SOCDROP_MAXSIZE	100
 
@@ -152,6 +168,27 @@ struct cisd_info {
 struct cisd_socdrop_info {
 	int soc;
 	unsigned long time;
+};
+
+enum cisd_data {
+	CISD_DATA_FULL_COUNT = 0,
+	CISD_DATA_CAP_MAX,
+	CISD_DATA_CAP_MIN,
+	CISD_DATA_CAP_ONCE,
+	CISD_DATA_LEAKAGE_A,
+	CISD_DATA_LEAKAGE_B,
+	CISD_DATA_LEAKAGE_C,
+	CISD_DATA_LEAKAGE_D,
+	CISD_DATA_CAP_PER_TIME,
+	CISD_DATA_ERRCAP_LOW,
+	CISD_DATA_ERRCAP_HIGH,
+	CISD_DATA_OVER_VOLTAGE,
+	CISD_DATA_LEAKAGE_E,
+	CISD_DATA_LEAKAGE_F,
+	CISD_DATA_LEAKAGE_G,
+	CISD_DATA_RECHARGING_TIME,
+
+	CISD_DATA_MAX
 };
 
 struct cisd {
@@ -184,12 +221,39 @@ struct cisd {
 	int diff_cap_now;
 	int curr_cap_max;
 	int err_cap_max_thrs;
+	int err_cap_high_thr;
+	int err_cap_low_thr;
+	int overflow_cap_thr;
+	unsigned int cc_delay_time;
+	unsigned int full_delay_time;
+	unsigned int lcd_off_delay_time;
+	unsigned int recharge_delay_time;
 	int diff_soc;
 	unsigned int diff_time;
+	unsigned long cc_start_time;
+	unsigned long full_start_time;
+	unsigned long lcd_off_start_time;
+	unsigned long overflow_start_time;
+	unsigned long charging_end_time;
+	unsigned long charging_end_time_2;
+	unsigned int charge_power_thres;
+	unsigned int recharge_count;
+	unsigned int recharge_count_2;
+	unsigned int recharge_count_thres;
+	unsigned long leakage_e_time;
+	unsigned long leakage_f_time;
+	unsigned long leakage_g_time;
+	int current_max_thres;
+	int charging_current_thres;
+	int current_avg_thres;
 
 	int check_temp_min;
 	int check_soc_min;
 	int check_volt_min;
+
+	/* Big Data Field */
+	int capacity_now;
+	int data[CISD_DATA_MAX];
 };
 
 struct sec_battery_info {
@@ -215,10 +279,10 @@ struct sec_battery_info {
 	struct notifier_block batt_nb;
 #endif
 #endif
-
-#if defined(CONFIG_CCIC_NOTIFIER)
 	bool pdic_attach;
 	bool pdic_ps_rdy;
+	bool rp_attach;
+#if defined(CONFIG_CCIC_NOTIFIER)
 	struct pdic_notifier_struct pdic_info;
 	struct sec_bat_pdic_list pd_list;
 #endif
@@ -226,6 +290,10 @@ struct sec_battery_info {
 	struct notifier_block vbus_nb;
 	int muic_vbus_status;
 #endif
+
+	unsigned int ab_vbat_max_count;
+	unsigned int ab_vbat_check_count;
+	bool is_sysovlo;
 
 	int status;
 	int health;
@@ -269,6 +337,9 @@ struct sec_battery_info {
 	struct cisd cisd;
 	bool use_cisd;
 	bool cisd_chg_limit_enable;
+	unsigned int cisd_check_max_capacity;
+	unsigned int max_voltage_thr;
+	unsigned int cisd_alg_index;
 
 	/* battery check */
 	unsigned int check_count;
@@ -441,6 +512,8 @@ struct sec_battery_info {
 	struct wake_lock misc_event_wake_lock;
 	struct mutex batt_handlelock;
 	struct mutex current_eventlock;
+
+	int mixed_temperature;
 };
 
 ssize_t sec_bat_show_attrs(struct device *dev,
@@ -548,6 +621,7 @@ enum {
 	BATT_STABILITY_TEST,
 	BATT_CAPACITY_MAX,
 	BATT_INBAT_VOLTAGE,
+	BATT_INBAT_VOLTAGE_OCV,
 #if defined(CONFIG_BATTERY_SWELLING_SELF_DISCHARGING)
 	BATT_DISCHARGING_CHECK,
 	BATT_DISCHARGING_CHECK_ADC,
@@ -623,6 +697,7 @@ enum {
 	CISD_CHG_ONOFF,
 	CISD_CHG_LIMIT,
 	DESIGNCAP_CORRUPT,
+	CISD_DATA,
 };
 
 enum {

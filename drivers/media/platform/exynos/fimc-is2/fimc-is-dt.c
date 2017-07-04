@@ -697,21 +697,35 @@ int fimc_is_spi_parse_dt(struct fimc_is_spi *spi)
 
 	s = pinctrl_lookup_state(spi->pinctrl, "ssn_out");
 	if (IS_ERR_OR_NULL(s)) {
-		err("pinctrl_lookup_state(%s) is failed", "ssn_out");
-		ret = -EINVAL;
-		goto p_err;
+		probe_info("pinctrl_lookup_state(%s) is not found", "ssn_out");
+		spi->pin_ssn_out = NULL;
+	} else {
+		spi->pin_ssn_out = s;
 	}
-
-	spi->pin_ssn_out = s;
 
 	s = pinctrl_lookup_state(spi->pinctrl, "ssn_fn");
 	if (IS_ERR_OR_NULL(s)) {
-		err("pinctrl_lookup_state(%s) is failed", "ssn_fn");
-		ret = -EINVAL;
-		goto p_err;
+		probe_info("pinctrl_lookup_state(%s) is not found", "ssn_fn");
+		spi->pin_ssn_fn = NULL;
+	} else {
+		spi->pin_ssn_fn = s;
 	}
 
-	spi->pin_ssn_fn = s;
+	s = pinctrl_lookup_state(spi->pinctrl, "ssn_inpd");
+	if (IS_ERR_OR_NULL(s)) {
+		probe_info("pinctrl_lookup_state(%s) is not found", "ssn_inpd");
+		spi->pin_ssn_inpd = NULL;
+	} else {
+		spi->pin_ssn_inpd = s;
+	}
+
+	s = pinctrl_lookup_state(spi->pinctrl, "ssn_inpu");
+	if (IS_ERR_OR_NULL(s)) {
+		probe_info("pinctrl_lookup_state(%s) is not found", "ssn_inpu");
+		spi->pin_ssn_inpu = NULL;
+	} else {
+		spi->pin_ssn_inpu = s;
+	}
 
 	spi->parent_pinctrl = devm_pinctrl_get(spi->device->dev.parent->parent);
 

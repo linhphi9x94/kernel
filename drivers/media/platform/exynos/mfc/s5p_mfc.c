@@ -340,6 +340,12 @@ int get_framerate_by_timestamp(struct s5p_mfc_ctx *ctx, struct v4l2_buffer *buf)
 				min_interval, max_framerate);
 	}
 
+	if (!ctx->ts_is_full) {
+		if (debug_ts == 1)
+			mfc_info_ctx("ts doesn't full, keep %d fps\n", ctx->framerate);
+		return ctx->framerate;
+	}
+
 	return max_framerate;
 }
 
@@ -598,10 +604,10 @@ static void mfc_handle_released_info(struct s5p_mfc_ctx *ctx,
 	if (released_flag) {
 		for (t = 0; t < MFC_MAX_DPBS; t++) {
 			if (released_flag & (1 << t)) {
-				if (dec->err_sync_flag & (1 << t)) {
+				if (dec->err_reuse_flag & (1 << t)) {
 					mfc_debug(2, "Released, but reuse. FD[%d] = %03d\n",
 							t, dec->assigned_fd[t]);
-					dec->err_sync_flag &= ~(1 << t);
+					dec->err_reuse_flag &= ~(1 << t);
 				} else {
 					mfc_debug(2, "Release FD[%d] = %03d\n",
 							t, dec->assigned_fd[t]);
@@ -664,7 +670,7 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 	unsigned int index;
 	unsigned int frame_type;
 	unsigned int interlace_type = 0, is_interlace = 0;
-	unsigned int is_matrix_coefficients = 0;
+	unsigned int is_video_signal_type = 0, is_colour_description = 0;
 	unsigned int is_content_light = 0, is_display_colour = 0;
 	int mvc_view_id;
 	unsigned int dst_frame_status, last_frame_status;
@@ -722,8 +728,10 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 	}
 	if (interlaced_cond(ctx))
 		is_interlace = s5p_mfc_is_interlace_picture();
-	if (FW_HAS_MATRIX_COEFFICIENTS(dev))
-		is_matrix_coefficients = s5p_mfc_get_matrix_coefficients();
+	if (FW_HAS_VIDEO_SIGNAL_TYPE(dev)) {
+		is_video_signal_type = s5p_mfc_get_video_signal_type();
+		is_colour_description = s5p_mfc_get_colour_description();
+	}
 	if (FW_HAS_SEI_INFO_FOR_HDR(dev)) {
 		is_content_light = s5p_mfc_get_sei_avail_content_light();
 		is_display_colour = s5p_mfc_get_sei_avail_mastering_display();
@@ -770,8 +778,9 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 		if (s5p_mfc_mem_plane_addr(ctx, &dst_buf->vb, 0)
 							== dspl_y_addr) {
 			index = dst_buf->vb.v4l2_buf.index;
-			if (ctx->codec_mode == S5P_FIMV_CODEC_VC1RCV_DEC &&
-				s5p_mfc_err_dspl(err) == S5P_FIMV_ERR_SYNC_POINT_NOT_RECEIVED) {
+			if ((ctx->codec_mode == S5P_FIMV_CODEC_VC1RCV_DEC &&
+					s5p_mfc_err_dspl(err) == S5P_FIMV_ERR_SYNC_POINT_NOT_RECEIVED) ||
+					(s5p_mfc_err_dspl(err) == S5P_FIMV_ERR_BROKEN_LINK)) {
 				if (released_flag & (1 << index)) {
 					list_del(&dst_buf->list);
 					dec->ref_queue_cnt--;
@@ -779,10 +788,12 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 					ctx->dst_queue_cnt++;
 					dec->dpb_status &= ~(1 << index);
 					released_flag &= ~(1 << index);
-					mfc_debug(2, "SYNC_POINT_NOT_RECEIVED, released.\n");
+					mfc_debug(2, "Corrupted frame(%d), it will be re-used(released)\n",
+							s5p_mfc_err_dspl(err));
 				} else {
-					dec->err_sync_flag |= 1 << index;
-					mfc_debug(2, "SYNC_POINT_NOT_RECEIVED, used.\n");
+					dec->err_reuse_flag |= 1 << index;
+					mfc_debug(2, "Corrupted frame(%d), it will be re-used(not released)\n",
+							s5p_mfc_err_dspl(err));
 				}
 				dec->dynamic_used |= released_flag;
 				break;
@@ -819,9 +830,15 @@ static void s5p_mfc_handle_frame_new(struct s5p_mfc_ctx *ctx, unsigned int err)
 				dst_buf->vb.v4l2_buf.reserved2 |= (1 << 1);
 				mfc_debug(2, "mastering display colour parsed\n");
 			}
-			if (is_matrix_coefficients) {
-				dst_buf->vb.v4l2_buf.reserved2 |= (1 << 2);
+			if (is_video_signal_type) {
+				dst_buf->vb.v4l2_buf.reserved2 |= (1 << 4);
 				mfc_debug(2, "video signal type parsed\n");
+				if (is_colour_description) {
+					dst_buf->vb.v4l2_buf.reserved2 |= (1 << 2);
+					mfc_debug(2, "matrix coefficients parsed\n");
+					dst_buf->vb.v4l2_buf.reserved2 |= (1 << 3);
+					mfc_debug(2, "colour description parsed\n");
+				}
 			}
 
 			if (ctx->src_fmt->mem_planes == 1) {
@@ -1139,9 +1156,13 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 
 	mfc_debug(2, "Frame Status: %x\n", dst_frame_status);
 	mfc_debug(5, "SEI available status: 0x%08x\n", s5p_mfc_get_sei_avail());
-	mfc_debug(5, "SEI CONTENT_LIGHT: 0x%08x\n", s5p_mfc_get_sei_content_light());
-	mfc_debug(5, "SEI MASTERING_DISPLAY: 0x%08x, %08x\n",
-				s5p_mfc_get_sei_mastering0(), s5p_mfc_get_sei_mastering1());
+	mfc_debug(5, "SEI contents light: 0x%08x\n", s5p_mfc_get_sei_content_light());
+	mfc_debug(5, "SEI luminance: 0x%08x, 0x%08x, white point: 0x%08x\n",
+				s5p_mfc_get_sei_mastering0(), s5p_mfc_get_sei_mastering1(),
+				s5p_mfc_get_sei_mastering2());
+	mfc_debug(5, "SEI display primaries: 0x%08x, 0x%08x, 0x%08x\n",
+				s5p_mfc_get_sei_mastering3(), s5p_mfc_get_sei_mastering4(),
+				s5p_mfc_get_sei_mastering5());
 	mfc_debug(2, "Used flag: old = %08x, new = %08x\n",
 				dec->dynamic_used, mfc_get_dec_used_flag());
 
@@ -1184,6 +1205,8 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 	/* All frames remaining in the buffer have been extracted  */
 	if (dst_frame_status == S5P_FIMV_DEC_STATUS_DECODING_EMPTY) {
 		if (ctx->state == MFCINST_RES_CHANGE_FLUSH) {
+			struct mfc_timestamp *temp_ts = NULL;
+			
 			mfc_debug(2, "Last frame received after resolution change.\n");
 			s5p_mfc_handle_frame_all_extracted(ctx);
 			s5p_mfc_change_state(ctx, MFCINST_RES_CHANGE_END);
@@ -1210,6 +1233,18 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 				}
 				cleanup_assigned_dpb(ctx);
 			}
+
+			/* empty the timestamp queue */
+			while (!list_empty(&ctx->ts_list)) {
+				temp_ts = list_entry((&ctx->ts_list)->next,
+						struct mfc_timestamp, list);
+				list_del(&temp_ts->list);
+			}
+			ctx->ts_count = 0;
+			ctx->ts_is_full = 0;
+			ctx->last_framerate = 0;
+			ctx->framerate = DEC_MAX_FPS;
+			
 			goto leave_handle_frame;
 		} else {
 			s5p_mfc_handle_frame_all_extracted(ctx);
@@ -1253,8 +1288,8 @@ static void s5p_mfc_handle_frame(struct s5p_mfc_ctx *ctx,
 		remained = (unsigned int)(src_buf->vb.v4l2_planes[0].bytesused - dec->consumed);
 
 
-		if ((prev_offset == 0) && (remained > STUFF_BYTE) && (err == 0) &&
-				(src_buf->vb.v4l2_planes[0].bytesused > dec->consumed)){ 
+		if ((prev_offset == 0) && (remained > STUFF_BYTE)) {
+
 			/* Run MFC again on the same buffer */
 			mfc_debug(2, "Running again the same buffer.\n");
 
@@ -1741,7 +1776,7 @@ static irqreturn_t s5p_mfc_irq(int irq, void *priv)
 		spin_unlock_irq(&dev->condlock);
 	}
 	if (clear_hw_bit(ctx) == 0)
-		s5p_mfc_check_and_stop_hw(dev);
+		mfc_err_ctx("hardware bit is already cleared\n");
 	wake_up_ctx(ctx, reason, err);
 
 	if (dev->has_job) {
@@ -3059,6 +3094,7 @@ static struct platform_driver s5p_mfc_driver = {
 		.owner	= THIS_MODULE,
 		.pm	= &s5p_mfc_pm_ops,
 		.of_match_table = exynos_mfc_match,
+		.suppress_bind_attrs = true,		
 	},
 };
 

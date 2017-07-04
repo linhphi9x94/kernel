@@ -577,6 +577,14 @@ static int sdcardfs_rename(struct inode *old_dir, struct dentry *old_dentry,
 			}
 		}
 	}
+	spin_lock(&old_dentry->d_lock);
+	old_dentry->d_flags |= DCACHE_WILL_INVALIDATE;
+	spin_unlock(&old_dentry->d_lock);
+	if (flags & RENAME_EXCHANGE) {
+		spin_lock(&new_dentry->d_lock);
+		new_dentry->d_flags |= DCACHE_WILL_INVALIDATE;
+		spin_unlock(&new_dentry->d_lock);
+	}
 
 out_err:
 	mnt_drop_write(lower_new_path.mnt);

@@ -1133,6 +1133,10 @@
 		clock-gate;
 		use-fine-tuning;
 		card-init-hwacg-ctrl;
+<<<<<<< HEAD
+=======
+		switch_transfer;
+>>>>>>> 7916c2a... samsung: DQE7 Kernel
 		ignore-phase = <(1 << 7)>;
 		samsung,voltage-int-extra = <0x7>;
 		skip-init-mmc-scan;

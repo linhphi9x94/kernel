@@ -37,8 +37,11 @@
 #include <asm/stacktrace.h>
 #include <linux/io.h>
 
+#include <asm/sections.h>
+
 #define EXYNOS_INFORM2 0x808
 #define EXYNOS_INFORM3 0x80c
+extern unsigned int get_smpl_warn_number(void);
 
 //#include <mach/regs-pmu.h>
 
@@ -50,6 +53,23 @@ static unsigned long reserved_out_buf=0;
 static unsigned long reserved_out_size=0;
 static char *last_summary_buffer;
 static size_t last_summary_size;
+#endif
+
+#if defined(CONFIG_KFAULT_AUTO_SUMMARY)
+static struct sec_debug_auto_summary* auto_summary_info = 0;
+static char *auto_comment_buf = 0;
+
+struct auto_summary_log_map {
+	char prio_level;
+	char max_count;
+};
+
+static const struct auto_summary_log_map init_data[SEC_DEBUG_AUTO_COMM_BUF_SIZE]
+	= {{PRIO_LV0, 0}, {PRIO_LV5, 8}, {PRIO_LV9, 0}, {PRIO_LV5, 0}, {PRIO_LV5, 0}, 
+	{PRIO_LV1, 1}, {PRIO_LV2, 2}, {PRIO_LV5, 0}, {PRIO_LV5, 8}, {PRIO_LV0, 0}};
+
+extern void register_set_auto_comm_buf(void (*func)(int type, const char *buf, size_t size));
+extern void register_set_auto_comm_lastfreq(void (*func)(int type, int old_freq, int new_freq, u64 time));
 #endif
 
 #ifdef CONFIG_SEC_DEBUG
@@ -122,37 +142,8 @@ static int __init sec_debug_user_fault_init(void)
 }
 device_initcall(sec_debug_user_fault_init);
 
-
-/* layout of SDRAM
-	   0: magic (4B)
-      4~1023: panic string (1020B)
- 0x400~0x7ff: panic Extra Info (1KB)
-0x800~0x1000: panic dumper log
-      0x4000: copy of magic
- */
-#define SEC_DEBUG_MAGIC_PA 0x80000000
-#define SEC_DEBUG_MAGIC_VA phys_to_virt(SEC_DEBUG_MAGIC_PA)
-#define SEC_DEBUG_EXTRA_INFO_VA SEC_DEBUG_MAGIC_VA+0x400
-
-/* layout of extraInfo for bigdata
-	"KTIME":""
-	"FAULT":""
-	"BUG":""
-	"PANIC":
-	"PC":""
-	"LR":""
-	"STACK":""
- */
-struct sec_debug_panic_extra_info {
-	unsigned long fault_addr;
-	char bug_buf[SZ_64];
-	char panic_buf[SZ_64];
-	unsigned long pc;
-	unsigned long lr;
-	char backtrace[SZ_512];
-};
-
 static struct sec_debug_panic_extra_info panic_extra_info;
+extern struct exynos_chipid_info exynos_soc_info;
 
 enum sec_debug_upload_magic_t {
 	UPLOAD_MAGIC_INIT		= 0x0,
@@ -306,26 +297,39 @@ module_param_call(force_error, force_error, NULL, NULL, 0644);
 
 static void sec_debug_init_panic_extra_info(void)
 {
+	int i;
+
+	memset(&panic_extra_info, 0, sizeof(struct sec_debug_panic_extra_info));
+	
 	panic_extra_info.fault_addr = -1;
 	panic_extra_info.pc = -1;
 	panic_extra_info.lr = -1;
-	strncpy(panic_extra_info.bug_buf, "N/A", 3);
-	strncpy(panic_extra_info.panic_buf, "N/A", 3);
-	strncpy(panic_extra_info.backtrace, "N/A\"", 3);
+
+	for(i = 0; i < INFO_MAX; i++)
+		strncpy(panic_extra_info.extra_buf[i], "N/A", 3);
+	
+	strncpy(panic_extra_info.backtrace, "N/A\",\n", 6);
 }
 
 static void sec_debug_store_panic_extra_info(char* str)
 {
-	/* store panic extra info		
-		"KTIME":""	: kernel time
-		"FAULT":""	: fault addr
-		"BUG":""		: bug msg
-		"PANIC":""	: panic buffer msg
-		"PC":""		: pc val
-		"LR":""		: link register val
-		"STACK":""	: backtrace
-	 */
-
+	/* store panic extra info
+			"KTIME":""		: kernel time
+			"FAULT":""		: pgd,va,*pgd,*pud,*pmd,*pte
+			"BUG":""			: bug msg
+			"PANIC":""		: panic buffer msg
+			"PC":"" 			: pc val
+			"LR":"" 			: link register val
+			"STACK":""		: backtrace
+			"CHIPID":"" 		: CPU Serial Number
+			"DBG0":""		: EVT version
+			"DBG1":""		: SYS MMU fault
+			"DBG2":""		: BUS MON Error
+			"DBG3":""		: dpm timeout
+			"DBG4":""		: SMPL count
+			"DBG5":""		: syndrome Register
+	*/
+	int i;
 	int panic_string_offset = 0;
 	int cp_len;
 	unsigned long rem_nsec;
@@ -339,48 +343,79 @@ static void sec_debug_store_panic_extra_info(char* str)
 
 	memset((void*)SEC_DEBUG_EXTRA_INFO_VA, 0, SZ_1K);
 
-	panic_string_offset += sprintf((char *)SEC_DEBUG_EXTRA_INFO_VA, 
-		"\"KTIME\":\"%lu.%06lu\",\n", (unsigned long)ts_nsec, rem_nsec / 1000);
+	panic_string_offset += snprintf((char *)SEC_DEBUG_EXTRA_INFO_VA, BUF_SIZE_MARGIN,
+		"\"KTIME\":\"%lu.%06lu\",\n", (unsigned long)ts_nsec, rem_nsec / 1000);	
+
 	if(panic_extra_info.fault_addr != -1)
-		panic_string_offset += sprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset, 
+		panic_string_offset += snprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset, 
+			BUF_SIZE_MARGIN - panic_string_offset,
 			"\"FAULT\":\"0x%lx\",\n", panic_extra_info.fault_addr);
 	else
-		panic_string_offset += sprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset, 
+		panic_string_offset += snprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset, 
+			BUF_SIZE_MARGIN - panic_string_offset,
 			"\"FAULT\":\"\",\n");
-	
-	if(strncmp(panic_extra_info.bug_buf, "N/A", 3))
-		panic_string_offset += sprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset,
-			"\"BUG\":\"%s\",\n", panic_extra_info.bug_buf);
-	else
-		panic_string_offset += sprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset, 
-			"\"BUG\":\"\",\n");	
-	
-	panic_string_offset += sprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset, 
+
+	panic_string_offset += snprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset,
+		BUF_SIZE_MARGIN - panic_string_offset,
+		"\"BUG\":\"%s\",\n", panic_extra_info.extra_buf[INFO_BUG]);
+
+	panic_string_offset += snprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset,
+		BUF_SIZE_MARGIN - panic_string_offset,
 		"\"PANIC\":\"%s\",\n", str);
 	
 	if(panic_extra_info.pc != -1)
-		panic_string_offset += sprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset, 
+		panic_string_offset += snprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset,
+			BUF_SIZE_MARGIN - panic_string_offset,
 			"\"PC\":\"%pS\",\n", (void*)panic_extra_info.pc);
 	else
-		panic_string_offset += sprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset, 
-			"\",\"PC\":\"\",\n");
+		panic_string_offset += snprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset,
+			BUF_SIZE_MARGIN - panic_string_offset,
+			"\"PC\":\"\",\n");
 			
 	if(panic_extra_info.lr != -1)
-		panic_string_offset += sprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset, 
+		panic_string_offset += snprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset,
+			BUF_SIZE_MARGIN - panic_string_offset,
 			"\"LR\":\"%pS\",\n", (void*)panic_extra_info.lr);
 	else
-		panic_string_offset += sprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset, 
+		panic_string_offset += snprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset,
+			BUF_SIZE_MARGIN - panic_string_offset,
 			"\"LR\":\"\",\n");
 
 	cp_len = strlen(panic_extra_info.backtrace);
-	if(panic_string_offset + cp_len > SZ_1K - 10)
-		cp_len = SZ_1K - panic_string_offset - 10;
+
+	if(panic_string_offset + cp_len > BUF_SIZE_MARGIN)
+		cp_len = BUF_SIZE_MARGIN - panic_string_offset;
 
 	if(cp_len > 0) {
 		panic_string_offset += sprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset, 
 		"\"STACK\":\"");
 		strncpy((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset, panic_extra_info.backtrace, cp_len);
+		panic_string_offset += cp_len;
 	}
+	else {
+		panic_string_offset += snprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset,
+			BUF_SIZE_MARGIN - panic_string_offset,
+			"\"STACK\":\"N/A\",\n");
+	}
+
+	panic_string_offset += snprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset,
+		BUF_SIZE_MARGIN - panic_string_offset, "\"CHIPID\":\"\",\n");
+
+	panic_string_offset += snprintf((char *)SEC_DEBUG_EXTRA_INFO_VA  + panic_string_offset,
+		BUF_SIZE_MARGIN - panic_string_offset,
+		"\"DBG0\":\"%d.%d\"", (exynos_soc_info.product_id>>4) & 0xf, (exynos_soc_info.product_id & 0xf));		
+
+	for(i = 1; i < INFO_MAX; i++) {
+		if(panic_string_offset + strlen(panic_extra_info.extra_buf[i]) < BUF_SIZE_MARGIN)
+			panic_string_offset += snprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset,
+				BUF_SIZE_MARGIN - panic_string_offset,
+				",\n\"DBG%d\":\"%s\"", i, panic_extra_info.extra_buf[i]);
+		else {
+			panic_string_offset += snprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset,
+				BUF_SIZE_MARGIN - panic_string_offset, ",\n\"DBG%d\":\"%s\"", i, panic_extra_info.extra_buf[i]);
+		}
+	}
+	sprintf((char *)SEC_DEBUG_EXTRA_INFO_VA + panic_string_offset, "\n");
 }
 
 void sec_debug_store_fault_addr(unsigned long addr, struct pt_regs *regs)
@@ -394,12 +429,20 @@ void sec_debug_store_fault_addr(unsigned long addr, struct pt_regs *regs)
 	}
 }
 
-void sec_debug_store_bug_string(const char *fmt, ...)
+void sec_debug_store_extra_buf(enum sec_debug_extra_buf_type type, const char *fmt, ...)
 {	
 	va_list args;
+	int len;
+
+	if(!strncmp(panic_extra_info.extra_buf[type], "N/A", 3))
+		len = 0;
+	else
+		len = strlen(panic_extra_info.extra_buf[type]);
+
+	printk("sec_debug_store_extra_buf type %d, len %d\n", type, len);
 	
 	va_start(args, fmt);
-	vsnprintf(panic_extra_info.bug_buf, sizeof(panic_extra_info.bug_buf), fmt, args);
+	vsnprintf(&panic_extra_info.extra_buf[type][len], SZ_256 - len, fmt, args);
 	va_end(args);
 }
 
@@ -442,7 +485,7 @@ void sec_debug_store_backtrace(struct pt_regs *regs)
 		sprintf((char*)panic_extra_info.backtrace+offset, "%s", buf);		
 		offset += sym_name_len;
 	}
-	sprintf((char*)panic_extra_info.backtrace+offset, "\"\n");
+	sprintf((char*)panic_extra_info.backtrace+offset, "\",\n");
 	
 }
 
@@ -711,7 +754,6 @@ static u64 get_iowait_time(int cpu)
 static void sec_debug_dump_cpu_stat(void)
 {
 	int i, j;
-	unsigned long jif;
 	u64 user, nice, system, idle, iowait, irq, softirq, steal;
 	u64 guest, guest_nice;
 	u64 sum = 0;
@@ -728,7 +770,6 @@ static void sec_debug_dump_cpu_stat(void)
 	user = nice = system = idle = iowait = irq = softirq = steal = 0;
 	guest = guest_nice = 0;
 	getboottime(&boottime);
-	jif = boottime.tv_sec;
 
 	for_each_possible_cpu(i) {
 		user	+= kcpustat_cpu(i).cpustat[CPUTIME_USER];
@@ -838,16 +879,18 @@ void sec_debug_panic_handler(void *buf, bool dump)
 	sec_debug_set_upload_magic(UPLOAD_MAGIC_PANIC, buf);
 	if (!strncmp(buf, "User Fault", 10))
 		sec_debug_set_upload_cause(UPLOAD_CAUSE_USER_FAULT);
+	else if (exynos_ss_hardkey_triger)
+		sec_debug_set_upload_cause(UPLOAD_CAUSE_HARDKEY_RESET);	
 	else if (!strncmp(buf, "Crash Key", 9))
 		sec_debug_set_upload_cause(UPLOAD_CAUSE_FORCED_UPLOAD);
+#ifdef CONFIG_SEC_UPLOAD
 	else if (!strncmp(buf, "User Crash Key", 14))
 		sec_debug_set_upload_cause(UPLOAD_CAUSE_USER_FORCED_UPLOAD);
+#endif
 	else if (!strncmp(buf, "CP Crash", 8))
 		sec_debug_set_upload_cause(UPLOAD_CAUSE_CP_ERROR_FATAL);
 	else if (!strncmp(buf, "HSIC Disconnected", 17))
 		sec_debug_set_upload_cause(UPLOAD_CAUSE_HSIC_DISCONNECTED);
-	else if (exynos_ss_hardkey_triger)
-		sec_debug_set_upload_cause(UPLOAD_CAUSE_HARDKEY_RESET);
 	else
 		sec_debug_set_upload_cause(UPLOAD_CAUSE_KERNEL_PANIC);
 
@@ -912,111 +955,9 @@ void sec_debug_Hard_Reset_Triger(unsigned int code, int value)
 	}
 }
 
-enum {
-	LK_VOLUME_UP,
-	LK_VOLUME_DOWN,
-	LK_POWER,
-	LK_HOMEPAGE,
-	LK_MAX,
-} local_key_map;
-
-static int key_map(unsigned int code)
-{
-	switch (code) {
-	case KEY_VOLUMEDOWN:
-		return LK_VOLUME_DOWN;
-	case KEY_VOLUMEUP:
-		return LK_VOLUME_UP;
-	case KEY_POWER:
-		return LK_POWER;
-	case KEY_HOMEPAGE:
-		return LK_HOMEPAGE;
-	default:
-		return LK_MAX;
-	}
-}
-
-/* Input sequence 9530 */
-#define CRASH_COUNT_VOLUME_UP 9
-#define CRASH_COUNT_VOLUME_DOWN 5
-#define CRASH_COUNT_POWER 3
-
-void _check_crash_user(unsigned int code, int onoff)
-{
-	static bool home_p;
-	static int check_count;
-	static int check_step;
-	static bool local_key_state[LK_MAX];
-	int key_index = key_map(code);
-
-	if (key_index >= LK_MAX)
-		return;
-
-	if (onoff) {
-		/* Check duplicate input */
-		if (local_key_state[key_index])
-			return;
-		local_key_state[key_index] = true;
-
-		if (code == KEY_HOMEPAGE) {
-			check_step = 1;
-			home_p = true;
-			return;
-		}
-		if (home_p) {
-			switch (check_step) {
-			case 1:
-				if (code == KEY_VOLUMEUP)
-					check_count++;
-				else {
-					check_count = 0;
-					check_step = 0;
-					pr_info("Rest crach key check [%d]\n",
-							__LINE__);
-				}
-				if (check_count == CRASH_COUNT_VOLUME_UP)
-					check_step++;
-				break;
-			case 2:
-				if (code == KEY_VOLUMEDOWN)
-					check_count++;
-				else {
-					check_count = 0;
-					check_step = 0;
-					pr_info("Rest crach key check [%d]\n",
-							__LINE__);
-				}
-				if (check_count == CRASH_COUNT_VOLUME_UP
-						+ CRASH_COUNT_VOLUME_DOWN)
-					check_step++;
-				break;
-			case 3:
-				if (code == KEY_POWER)
-					check_count++;
-				else {
-					check_count = 0;
-					check_step = 0;
-					pr_info("Rest crach key check [%d]\n",
-							__LINE__);
-				}
-				if (check_count == CRASH_COUNT_VOLUME_UP
-						+ CRASH_COUNT_VOLUME_DOWN
-						+ CRASH_COUNT_POWER)
-					panic("User Crash Key");
-				break;
-			default:
-				break;
-			}
-		}
-	} else {
-		local_key_state[key_index] = false;
-		if (code == KEY_HOMEPAGE) {
-			check_count = 0;
-			check_step = 0;
-			home_p = false;
-		}
-	}
-}
+#ifdef CONFIG_SEC_UPLOAD
+extern void check_crash_keys_in_user(unsigned int code, int onoff);
+#endif
 
 void sec_debug_check_crash_key(unsigned int code, int value)
 {
@@ -1030,7 +971,9 @@ void sec_debug_check_crash_key(unsigned int code, int value)
 	sec_debug_Hard_Reset_Triger(code, value);
 
 	if (!sec_debug_level.en.kernel_fault) {
-		_check_crash_user(code, value);
+#ifdef CONFIG_SEC_UPLOAD
+		check_crash_keys_in_user(code, value);
+#endif
 		return;
 	}
 
@@ -1155,6 +1098,43 @@ static const struct file_operations sec_reset_summary_info_proc_fops = {
 };
 #endif
 
+#if defined(CONFIG_KFAULT_AUTO_SUMMARY)
+static ssize_t sec_reset_auto_comment_proc_read(struct file *file, char __user *buf,
+		size_t len, loff_t *offset)
+{
+	loff_t pos = *offset;
+	ssize_t count;
+
+	if(!auto_comment_buf)
+	{
+		printk("%s : auto_comment_buf null\n", __func__);
+		return -ENODEV;
+	}
+
+	if(reset_reason >= RR_R && reset_reason <= RR_N) {
+		printk("%s : auto_comment_buf reset_reason %d\n", __func__, reset_reason);
+		return -ENOENT;
+	}
+
+	if (pos >= AUTO_COMMENT_SIZE) {
+		printk("%s : auto_comment_buf pos 0x%llx\n", __func__, pos);
+		return -ENOENT;
+	}
+
+	count = min(len, (size_t)(AUTO_COMMENT_SIZE - pos));
+	if (copy_to_user(buf, auto_comment_buf + pos, count))
+		return -EFAULT;
+	
+	*offset += count;
+	return count;
+}
+
+static const struct file_operations sec_reset_auto_comment_proc_fops = {
+	.owner = THIS_MODULE,
+	.read = sec_reset_auto_comment_proc_read,
+};
+#endif
+
 static int
 sec_reset_reason_proc_open(struct inode *inode, struct file *file)
 {
@@ -1208,6 +1188,16 @@ static int __init sec_debug_reset_reason_init(void)
 		return -ENOMEM;	
 
 	proc_set_size(entry, last_summary_size);
+#endif
+
+#if defined(CONFIG_KFAULT_AUTO_SUMMARY)
+	entry = proc_create("auto_comment", S_IWUGO, NULL,
+		&sec_reset_auto_comment_proc_fops);
+
+	if (!entry)
+		return -ENOMEM;
+
+	proc_set_size(entry, AUTO_COMMENT_SIZE);
 #endif
 
 	return 0;
@@ -1387,6 +1377,112 @@ module_exit(sec_param_work_exit);
 
 #endif /* CONFIG_SEC_DEBUG */
 
+#if defined(CONFIG_KFAULT_AUTO_SUMMARY)
+void sec_debug_auto_summary_log_disable(int type)
+{
+	atomic_inc(&auto_summary_info->auto_Comm_buf[type].logging_diable);
+}
+
+void sec_debug_auto_summary_log_once(int type)
+{
+	if (atomic64_read(&auto_summary_info->auto_Comm_buf[type].logging_entry))
+		sec_debug_auto_summary_log_disable(type);
+	else
+		atomic_inc(&auto_summary_info->auto_Comm_buf[type].logging_entry);
+}
+
+static inline void sec_debug_hook_auto_comm_lastfreq(int type, int old_freq, int new_freq, u64 time)
+{
+	if(type < FREQ_INFO_MAX) {
+		auto_summary_info->freq_info[type].old_freq = old_freq;
+		auto_summary_info->freq_info[type].new_freq = new_freq;
+		auto_summary_info->freq_info[type].time_stamp = time;
+	}
+}
+
+static inline void sec_debug_hook_auto_comm(int type, const char *buf, size_t size)
+{
+	struct sec_debug_auto_comm_buf* auto_comm_buf = &auto_summary_info->auto_Comm_buf[type];
+	int offset = auto_comm_buf->offset;
+
+	if (atomic64_read(&auto_comm_buf->logging_diable))
+		return;
+
+	if (offset + size > SZ_4K)
+		return;
+
+	if (init_data[type].max_count &&
+		atomic64_read(&auto_comm_buf->logging_count) > init_data[type].max_count)
+		return;
+
+	if (!(auto_summary_info->fault_flag & 1 << type)) {
+		auto_summary_info->fault_flag |= 1 << type;
+		if(init_data[type].prio_level == PRIO_LV5) {
+			auto_summary_info->lv5_log_order |= type << auto_summary_info->lv5_log_cnt * 4;
+			auto_summary_info->lv5_log_cnt++;
+		}		
+		auto_summary_info->order_map[auto_summary_info->order_map_cnt++] = type;
+	}
+	
+	atomic_inc(&auto_comm_buf->logging_count);
+
+	memcpy(auto_comm_buf->buf + offset, buf, size);
+	auto_comm_buf->offset += size;
+}
+
+static void sec_auto_summary_init_print_buf(unsigned long base)
+{
+	auto_comment_buf = (char*)phys_to_virt(base);
+	auto_summary_info = (struct sec_debug_auto_summary*)phys_to_virt(base+SZ_4K);
+
+	memset(auto_summary_info, 0, sizeof(struct sec_debug_auto_summary));
+
+	auto_summary_info->haeder_magic = AUTO_SUMMARY_MAGIC;
+	auto_summary_info->tail_magic = AUTO_SUMMARY_TAIL_MAGIC;
+	
+	auto_summary_info->pa_text = virt_to_phys(_text);
+	auto_summary_info->pa_start_rodata = virt_to_phys(__start_rodata);
+	
+	register_set_auto_comm_buf(sec_debug_hook_auto_comm);
+	register_set_auto_comm_lastfreq(sec_debug_hook_auto_comm_lastfreq);
+	sec_debug_set_auto_comm_last_devfreq_buf(auto_summary_info->freq_info);
+	sec_debug_set_auto_comm_last_cpufreq_buf(auto_summary_info->freq_info);
+}
+
+static int __init sec_auto_summary_log_setup(char *str)
+{
+	unsigned long size = memparse(str, &str);
+	unsigned long base = 0;
+
+	/* If we encounter any problem parsing str ... */
+	if (!size || *str != '@' || kstrtoul(str + 1, 0, &base)) {
+		pr_err("%s: failed to parse address.\n", __func__);
+		goto out;
+	}
+
+	size += sizeof(struct sec_debug_auto_summary);
+
+#ifdef CONFIG_NO_BOOTMEM
+		if (memblock_is_region_reserved(base, size) ||
+			memblock_reserve(base, size)) {
+#else
+		if (reserve_bootmem(base, size, BOOTMEM_EXCLUSIVE)) {
+#endif
+		pr_err("%s: failed to reserve size:0x%lx " \
+				"at base 0x%lx\n", __func__, size + sizeof(auto_summary_info), base);
+		goto out;
+	}
+		
+	sec_auto_summary_init_print_buf(base);	
+
+	pr_info("%s, base:0x%lx size:0x%lx\n", __func__, base, size);
+	
+out:
+	return 0;
+}
+__setup("auto_summary_log=", sec_auto_summary_log_setup);
+#endif
+
 #if defined(CONFIG_SEC_DUMP_SUMMARY)
 void sec_debug_summary_set_reserved_out_buf(unsigned long buf, unsigned long size)
 {
@@ -1447,8 +1543,9 @@ int sec_debug_summary_init(void)
 	memset(summary_info, 0, sizeof(struct sec_debug_summary));
 
 	exynos_ss_summary_set_sched_log_buf(summary_info);
-
+#ifdef CONFIG_ANDROID_LOGGER
 	sec_debug_summary_set_logger_info(&summary_info->kernel.logger_log);
+#endif
 	offset += sizeof(struct sec_debug_summary);
 
 	summary_info->kernel.cpu_info.cpu_active_mask_paddr = virt_to_phys(cpu_active_mask);
@@ -1458,6 +1555,7 @@ int sec_debug_summary_init(void)
 	summary_info->kernel.nr_cpus = CONFIG_NR_CPUS;
 	summary_info->reserved_out_buf = reserved_out_buf;
 	summary_info->reserved_out_size = reserved_out_size;
+
 	summary_info->magic[0] = SEC_DEBUG_SUMMARY_MAGIC0;
 	summary_info->magic[1] = SEC_DEBUG_SUMMARY_MAGIC1;
 	summary_info->magic[2] = SEC_DEBUG_SUMMARY_MAGIC2;

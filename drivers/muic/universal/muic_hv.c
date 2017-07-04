@@ -1678,6 +1678,7 @@ static bool muic_check_status3_vbadc
 		switch (vbadc) {
 		case VBADC_4V_5V:
 		case VBADC_5V_6V:
+		case VBADC_6V_7V:
 			ret = true;
 			goto out;
 		default:
@@ -1759,6 +1760,7 @@ static bool muic_check_status3_vbadc
 		switch (vbadc) {
 		case VBADC_4V_5V:
 		case VBADC_5V_6V:
+		case VBADC_6V_7V:
 			ret = true;
 			goto out;
 		default:

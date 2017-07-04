@@ -218,11 +218,13 @@ int send_instruction(struct ssp_data *data, u8 uInst,
 	char command;
 	int iRet = 0;
 	struct ssp_msg *msg;
+	
+	//u64 current_Ts = 0; 
 #ifdef CONFIG_SENSORS_SSP_HIFI_BATCHING
 	u64 timestamp;
 #endif
 
-	if ((!(data->uSensorState & (1 << uSensorType)))
+	if ((!(data->uSensorState & (1ULL << uSensorType)))
 		&& (uInst <= CHANGE_DELAY)) {
 		pr_err("[SSP]: %s - Bypass Inst Skip! - %u\n",
 			__func__, uSensorType);
@@ -237,7 +239,7 @@ int send_instruction(struct ssp_data *data, u8 uInst,
 		command = MSG2SSP_INST_BYPASS_SENSOR_ADD;
 #ifdef CONFIG_SENSORS_SSP_HIFI_BATCHING
 		timestamp = get_current_timestamp();
-		data->lastTimestamp[uSensorType] = timestamp;
+		data->lastTimestamp[uSensorType] = data->LastSensorTimeforReset[uSensorType] = timestamp;
 		data->ts_avg_buffer_idx[uSensorType] = 0;
 		data->ts_avg_buffer_cnt[uSensorType] = 0;
 		data->ts_avg_buffer_sum[uSensorType] = 0;
@@ -247,10 +249,13 @@ int send_instruction(struct ssp_data *data, u8 uInst,
 		memset(data->ts_avg_buffer[uSensorType], 0,
 				sizeof(u64)*SIZE_MOVING_AVG_BUFFER);
 #endif
+		data->first_sensor_data[uSensorType] = true;
 		break;
 	case CHANGE_DELAY:
 		command = MSG2SSP_INST_CHANGE_DELAY;
 #ifdef CONFIG_SENSORS_SSP_HIFI_BATCHING
+		timestamp = get_current_timestamp();
+		data->LastSensorTimeforReset[uSensorType] = timestamp;
 		data->ts_avg_buffer_idx[uSensorType] = 0;
 		data->ts_avg_buffer_cnt[uSensorType] = 0;
 		data->ts_avg_buffer_sum[uSensorType] = 0;
@@ -259,6 +264,7 @@ int send_instruction(struct ssp_data *data, u8 uInst,
 		memset(data->ts_avg_buffer[uSensorType], 0, 
 				sizeof(u64)*SIZE_MOVING_AVG_BUFFER);
 #endif
+		data->first_sensor_data[uSensorType] = true;
 		break;
 	case GO_SLEEP:
 		command = MSG2SSP_AP_STATUS_SLEEP;
@@ -300,8 +306,18 @@ int send_instruction(struct ssp_data *data, u8 uInst,
 		pr_err("[SSP]: %s - Instruction CMD Fail %d\n", __func__, iRet);
 		return ERROR;
 	}
-
-	return iRet;
+	
+    if(uInst == ADD_SENSOR || uInst == CHANGE_DELAY)
+    {
+        unsigned int BatchTimeforReset = 0;
+        //current_Ts = get_current_timestamp();
+        if(uLength >= 9)
+            BatchTimeforReset = *(unsigned int*)(&uSendBuf[4]);// Add / change normal case, not factory.
+        //pr_info("[SSP] %s timeForRest %d", __func__, BatchTimeforReset);
+        data->IsBypassMode[uSensorType] = (BatchTimeforReset == 0);
+        //pr_info("[SSP] sensor%d mode%d Time %lld\n", uSensorType, data->IsBypassMode[uSensorType], current_Ts);
+    }
+    return iRet;
 }
 
 int send_instruction_sync(struct ssp_data *data, u8 uInst,
@@ -311,11 +327,13 @@ int send_instruction_sync(struct ssp_data *data, u8 uInst,
 	int iRet = 0;
 	char buffer[10] = { 0, };
 	struct ssp_msg *msg;
+	
+	//u64 current_Ts = 0; 
 #ifdef CONFIG_SENSORS_SSP_HIFI_BATCHING
 	u64 timestamp;
 #endif
 
-	if ((!(data->uSensorState & (1 << uSensorType)))
+	if ((!(data->uSensorState & (1ULL << uSensorType)))
 		&& (uInst <= CHANGE_DELAY)) {
 		pr_err("[SSP]: %s - Bypass Inst Skip! - %u\n",
 			__func__, uSensorType);
@@ -330,7 +348,7 @@ int send_instruction_sync(struct ssp_data *data, u8 uInst,
 		command = MSG2SSP_INST_BYPASS_SENSOR_ADD;
 #ifdef CONFIG_SENSORS_SSP_HIFI_BATCHING
 		timestamp = get_current_timestamp();
-		data->lastTimestamp[uSensorType] = timestamp;
+		data->lastTimestamp[uSensorType] = data->LastSensorTimeforReset[uSensorType] = timestamp;
 		data->ts_avg_buffer_idx[uSensorType] = 0;
 		data->ts_avg_buffer_cnt[uSensorType] = 0;
 		data->ts_avg_buffer_sum[uSensorType] = 0;
@@ -340,10 +358,13 @@ int send_instruction_sync(struct ssp_data *data, u8 uInst,
 		memset(data->ts_avg_buffer[uSensorType], 0,
 				sizeof(u64)*SIZE_MOVING_AVG_BUFFER);
 #endif
+		data->first_sensor_data[uSensorType] = true;
 		break;
 	case CHANGE_DELAY:
 		command = MSG2SSP_INST_CHANGE_DELAY;
 #ifdef CONFIG_SENSORS_SSP_HIFI_BATCHING
+		timestamp = get_current_timestamp();
+		data->LastSensorTimeforReset[uSensorType] = timestamp;
 		data->ts_avg_buffer_idx[uSensorType] = 0;
 		data->ts_avg_buffer_cnt[uSensorType] = 0;
 		data->ts_avg_buffer_sum[uSensorType] = 0;
@@ -352,6 +373,7 @@ int send_instruction_sync(struct ssp_data *data, u8 uInst,
 		memset(data->ts_avg_buffer[uSensorType], 0,
 				sizeof(u64)*SIZE_MOVING_AVG_BUFFER);
 #endif
+		data->first_sensor_data[uSensorType] = true;
 		break;
 	case GO_SLEEP:
 		command = MSG2SSP_AP_STATUS_SLEEP;
@@ -393,8 +415,18 @@ int send_instruction_sync(struct ssp_data *data, u8 uInst,
 		pr_err("[SSP]: %s - Instruction CMD Fail %d\n", __func__, iRet);
 		return ERROR;
 	}
-
-	return buffer[0];
+	
+    if(uInst == ADD_SENSOR || uInst == CHANGE_DELAY)
+    {
+        unsigned int BatchTimeforReset = 0;
+        //current_Ts = get_current_timestamp();
+        if(uLength >= 9)
+            BatchTimeforReset = *(unsigned int*)(&uSendBuf[4]);// Add / change normal case, not factory.
+        //pr_info("[SSP] %s timeForRest %d", __func__, BatchTimeforReset);
+        data->IsBypassMode[uSensorType] = (BatchTimeforReset == 0);
+        //pr_info("[SSP] sensor%d mode%d Time %lld\n", uSensorType, data->IsBypassMode[uSensorType], current_Ts);
+    }
+    return buffer[0];
 }
 
 int flush(struct ssp_data *data, u8 uSensorType)
@@ -644,7 +676,7 @@ void set_proximity_threshold(struct ssp_data *data)
 	msg->buffer[7] = (char) data->uProxLoThresh_detect;
 #else /* CONFIG_SENSORS_SSP_PROX_FACTORYCAL */
 	msg->cmd = MSG2SSP_AP_SENSOR_PROXTHRESHOLD;
-	msg->length = 4;
+	msg->length = 8;
 	msg->options = AP2HUB_WRITE;
 	msg->buffer = (char *) kzalloc(4, GFP_KERNEL);
 	msg->free_buffer = 1;
@@ -653,6 +685,12 @@ void set_proximity_threshold(struct ssp_data *data)
 	msg->buffer[1] = (char) data->uProxHiThresh;
 	msg->buffer[2] = ((char) (data->uProxLoThresh >> 8) & 0xff);
 	msg->buffer[3] = (char) data->uProxLoThresh;
+
+	//for tmd4904
+	msg->buffer[4] = ((char) (data->uProxHiThresh_tmd4904>> 8) & 0xff);
+	msg->buffer[5] = (char) data->uProxHiThresh_tmd4904;
+	msg->buffer[6] = ((char) (data->uProxLoThresh_tmd4904>> 8) & 0xff);
+	msg->buffer[7] = (char) data->uProxLoThresh_tmd4904;
 #endif
 
 	iRet = ssp_spi_async(data, msg);
@@ -668,8 +706,8 @@ void set_proximity_threshold(struct ssp_data *data)
 		data->uProxHiThresh, data->uProxLoThresh,
 		data->uProxHiThresh_detect, data->uProxLoThresh_detect);
 #else
-	pr_info("[SSP]: Proximity Threshold - %u, %u\n",
-		data->uProxHiThresh, data->uProxLoThresh);
+	pr_info("[SSP]: Proximity Threshold - %d, %d / %d %d\n",
+		data->uProxHiThresh, data->uProxLoThresh, data->uProxHiThresh_tmd4904, data->uProxLoThresh_tmd4904);
 #endif
 }
 
@@ -713,6 +751,45 @@ void set_proximity_alert_threshold(struct ssp_data *data)
 		__func__, data->uProxAlertHiThresh);
 }
 
+<<<<<<< HEAD
+=======
+int get_proximity_device_id(struct ssp_data *data)
+{
+	int device_id = 0;
+	int iRet = 0;
+
+	struct ssp_msg *msg;
+
+	if (!(data->uSensorState & (1 << PROXIMITY_SENSOR))) {
+		pr_info("[SSP]: %s - Skip this function!!!,"\
+			"proximity sensor is not connected(0x%llx)\n",
+			__func__, data->uSensorState);
+		return ERROR;
+	}
+
+	msg = kzalloc(sizeof(*msg), GFP_KERNEL);
+	if (msg == NULL) {
+		pr_err("[SSP] %s, failed to alloc memory for ssp_msg\n",
+			__func__);
+		return ERROR;
+	}
+	msg->cmd = MSG2SSP_AP_SENSOR_PROX_GET_DEVICE_ID;
+	msg->length = 1;
+	msg->options = AP2HUB_READ;
+	msg->buffer = (char *) &device_id;
+	msg->free_buffer = 0;
+
+	iRet = ssp_spi_sync(data, msg, 1000);
+	if (iRet != SUCCESS)
+		pr_err("[SSP]: %s - transfer fail %d\n", __func__, iRet);
+
+	pr_info("[SSP]: %s Proximity Device ID - 0x%x\n",
+		__func__, device_id);
+
+	return device_id;
+}
+
+>>>>>>> 7916c2a... samsung: DQE7 Kernel
 void set_light_coef(struct ssp_data *data)
 {
 	int iRet = 0;

@@ -708,7 +708,7 @@ static int wm_adsp_fw_put(struct snd_kcontrol *kcontrol,
 	case WMFW_ADSP1:
 		if (dsp->running)
 			return -EBUSY;
-		dsp->fw = ucontrol->value.enumerated.item[0];
+		dsp->fw = ucontrol->value.integer.value[0];
 		return 0;
 	default:
 		return -EINVAL;
@@ -951,7 +951,7 @@ static int wm_coeff_put_acked(struct snd_kcontrol *kcontrol,
 {
 	struct wm_coeff_ctl *ctl =
 				(struct wm_coeff_ctl *)kcontrol->private_value;
-	unsigned int val = ucontrol->value.enumerated.item[0];
+	unsigned int val = ucontrol->value.integer.value[0];
 
 	if (!ctl->enabled)
 		return -EPERM;
@@ -1081,7 +1081,7 @@ static int wm_coeff_get_acked(struct snd_kcontrol *kcontrol,
 	 * the same event number again to the firmware). We therefore return 0,
 	 * meaning "no event" so valid event numbers will always be a change
 	 */
-	ucontrol->value.enumerated.item[0] = 0;
+	ucontrol->value.integer.value[0] = 0;
 
 	return 0;
 }

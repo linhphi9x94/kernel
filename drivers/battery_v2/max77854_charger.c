@@ -231,7 +231,7 @@ static void max77854_set_float_voltage(struct max77854_charger_data *charger, in
 	pr_info("%s: battery cv voltage 0x%x\n", __func__, reg_data);
 }
 
-static u8 max77854_get_float_voltage(struct max77854_charger_data *charger)
+static int max77854_get_float_voltage(struct max77854_charger_data *charger)
 {
 	u8 reg_data = 0;
 	int float_voltage;
@@ -242,7 +242,7 @@ static u8 max77854_get_float_voltage(struct max77854_charger_data *charger)
 	pr_debug("%s: battery cv reg : 0x%x, float voltage val : %d\n",
 		__func__, reg_data, float_voltage);
 
-	return reg_data;
+	return float_voltage;
 }
 static int max77854_get_charging_health(struct max77854_charger_data *charger)
 {
@@ -309,7 +309,7 @@ static int max77854_get_charging_health(struct max77854_charger_data *charger)
 				  MAX77854_CHG_REG_CNFG_00, &chg_cnfg_00);
 
 		/* print the log at the abnormal case */
-		if((charger->is_charging == 1) && (chg_dtls & 0x08)) {
+		if((charger->is_charging == 1) && ((chg_dtls & 0x08) || (chg_dtls & 0x04))) {
 			max77854_test_read(charger);
 			max77854_set_charger_state(charger, DISABLE);
 			max77854_set_float_voltage(charger, charger->float_voltage);
@@ -718,6 +718,22 @@ static void max77854_charger_initialize(struct max77854_charger_data *charger)
 	//max77854_test_read(charger);
 }
 
+static void max77854_set_sysovlo(struct max77854_charger_data *charger, int enable)
+{
+	u8 reg_data;
+
+	max77854_read_reg(charger->pmic_i2c, MAX77854_PMIC_REG_SYSTEM_INT_MASK, &reg_data);
+	if (enable) {
+		reg_data = reg_data & 0xDF;
+	} else {
+		reg_data = reg_data | 0x20;
+	}
+	max77854_write_reg(charger->pmic_i2c, MAX77854_PMIC_REG_SYSTEM_INT_MASK, reg_data);
+
+	max77854_read_reg(charger->pmic_i2c, MAX77854_PMIC_REG_SYSTEM_INT_MASK, &reg_data);
+	pr_info("%s: check topsys irq mask(0x%x), enable(%d)\n", __func__, reg_data, enable);
+}
+
 static int max77854_chg_create_attrs(struct device *dev)
 {
 	int i, rc;
@@ -855,6 +871,9 @@ static int max77854_chg_get_property(struct power_supply *psy,
 	case POWER_SUPPLY_PROP_CURRENT_NOW:
 		val->intval = charger->charging_current;
 		break;
+	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
+		val->intval = max77854_get_charge_current(charger);
+		break;
 	case POWER_SUPPLY_PROP_VOLTAGE_MAX:
 		val->intval = max77854_get_float_voltage(charger);
 		break;
@@ -956,6 +975,10 @@ static int max77854_chg_set_property(struct power_supply *psy,
 			cancel_delayed_work(&charger->wpc_work);
 			max77854_update_reg(charger->i2c,
 				MAX77854_CHG_REG_INT_MASK, 0, MAX77854_WCIN_IM);
+
+			if (charger->enable_sysovlo_irq) {
+				max77854_set_sysovlo(charger, 1);
+			}
 		}
 		break;
 	/* val->intval : input charging current */
@@ -985,6 +1008,8 @@ static int max77854_chg_set_property(struct power_supply *psy,
 			max77854_set_charge_current(charger, charger->charging_current);
 		}
 		break;
+	case POWER_SUPPLY_PROP_CONSTANT_CHARGE_CURRENT:
+		break;
 	case POWER_SUPPLY_PROP_CURRENT_FULL:
 		max77854_set_topoff_current(charger, val->intval);
 		break;
@@ -1006,7 +1031,7 @@ static int max77854_chg_set_property(struct power_supply *psy,
 		break;
 	case POWER_SUPPLY_PROP_ENERGY_NOW:
 		/* if jig attached, change the power source
-		from the VBATFG to the internal VSYS*/
+		   from the VBATFG to the internal VSYS*/
 		max77854_update_reg(charger->i2c, MAX77854_CHG_REG_CNFG_07,
 			(val->intval << CHG_CNFG_07_REG_FGSRC_SHIFT),
 			CHG_CNFG_07_REG_FGSRC_MASK);
@@ -1716,6 +1741,21 @@ static void max77854_wc_current_work(struct work_struct *work)
 		__func__, charger->wc_current, charger->wc_pre_current, diff_current);
 }
 
+static irqreturn_t max77854_sysovlo_irq(int irq, void *data)
+{
+	struct max77854_charger_data *charger = data;
+	union power_supply_propval value;
+
+	pr_info("%s \n", __func__);
+	wake_lock_timeout(&charger->sysovlo_wake_lock, HZ * 5);
+
+	psy_do_property("battery", set,
+		POWER_SUPPLY_EXT_PROP_SYSOVLO, value);
+
+	max77854_set_sysovlo(charger, 0);
+	return IRQ_HANDLED;
+}
+
 #ifdef CONFIG_OF
 static int max77854_charger_parse_dt(struct max77854_charger_data *charger)
 {
@@ -1727,6 +1767,8 @@ static int max77854_charger_parse_dt(struct max77854_charger_data *charger)
 	if (!np) {
 		pr_err("%s np NULL\n", __func__);
 	} else {
+		charger->enable_sysovlo_irq = of_property_read_bool(np, "battery,enable_sysovlo_irq");
+
 		ret = of_property_read_u32(np, "battery,chg_float_voltage",
 					   &pdata->chg_float_voltage);
 		if (ret) {
@@ -1933,6 +1975,22 @@ static int __devinit max77854_charger_probe(struct platform_device *pdev)
 		pr_err("%s: fail to request bypass IRQ: %d: %d\n",
 		       __func__, charger->irq_batp, ret);
 
+	if (charger->enable_sysovlo_irq) {
+		wake_lock_init(&charger->sysovlo_wake_lock, WAKE_LOCK_SUSPEND,
+		       "max77854-sysovlo");
+		/* Enable BIAS */
+		max77854_update_reg(max77854->i2c, MAX77854_PMIC_REG_MAINCTRL1, 0x80, 0x80);
+		/* set IRQ thread */
+		charger->irq_sysovlo = pdata->irq_base + MAX77854_SYSTEM_IRQ_SYSOVLO_INT;
+		ret = request_threaded_irq(charger->irq_sysovlo, NULL,
+				max77854_sysovlo_irq, 0, "sysovlo-irq", charger);
+		if (ret < 0) {
+			pr_err("%s: fail to request sysovlo IRQ: %d: %d\n",
+					__func__, charger->irq_sysovlo, ret);
+		}
+		enable_irq_wake(charger->irq_sysovlo);
+	}
+
 	ret = max77854_chg_create_attrs(charger->psy_chg.dev);
 	if (ret) {
 		dev_err(charger->dev,
@@ -1970,6 +2028,10 @@ static int __devexit max77854_charger_remove(struct platform_device *pdev)
 		platform_get_drvdata(pdev);
 
 	destroy_workqueue(charger->wqueue);
+
+	if (charger->enable_sysovlo_irq) {
+		free_irq(charger->irq_sysovlo, NULL);
+	}
 
 	free_irq(charger->wc_w_irq, NULL);
 	free_irq(charger->pdata->chg_irq, NULL);

@@ -1907,9 +1907,10 @@ const signed long decon_clocks_table[][CLK_ID_MAX] = {
 	{  41.7, 137.5,   400,    66,      62.5, 1440 * 2560,  MIC_COMP_RATIO_1_3,         0},
 	{   141, 137.5,   400,    66,       141, 1440 * 2560,     MIC_COMP_BYPASS,         0},
 	{    42,   337,   400,    66,        42, 1440 * 2560,     MIC_COMP_BYPASS,         1},
-        {    42,   168,   400,    66,        42, 1440 * 2560,     MIC_COMP_BYPASS,         2},
-        {   10.5,  168,   400,    66,      10.5,  720 * 1280,     MIC_COMP_BYPASS,         2},  /* HD */
-        {    24,   168,   400,    66,        24, 1080 * 1920,     MIC_COMP_BYPASS,         2},  /* FHD */
+    {    42,   168,   400,    66,        42, 1440 * 2560,     MIC_COMP_BYPASS,         2},
+    {   10.5,  168,   400,    66,      10.5,  720 * 1280,     MIC_COMP_BYPASS,         2},  /* HD */
+    {    24,   168,   400,    66,        24, 1080 * 1920,     MIC_COMP_BYPASS,         2},  /* FHD */
+    {    63,   168,   400,    66,        63, 1600 * 2560,  MIC_COMP_RATIO_1_2,         0},  /* wqxga */
 };
 
 void decon_reg_get_clock_ratio(struct decon_clocks *clks, struct decon_lcd *lcd_info)

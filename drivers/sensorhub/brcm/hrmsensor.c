@@ -29,6 +29,9 @@ static struct hrm_func adpd_func = {
 	.set_led_current = adpd_set_current,
 	.read_data = adpd_read_data,
 	.get_chipid = adpd_get_chipid,
+	.get_part_type = adpd_get_part_type,
+	.get_i2c_err_cnt = adpd_get_i2c_err_cnt,
+	.get_curr_adc = adpd_get_curr_adc,
 	.get_name_chipset = adpd_get_name_chipset,
 	.get_name_vendor = adpd_get_name_vendor,
 	.get_threshold = adpd_get_threshold,
@@ -37,6 +40,7 @@ static struct hrm_func adpd_func = {
 	.get_eol_result = adpd_get_eol_result,
 	.get_eol_status = adpd_get_eol_status,
 	.hrm_debug_set = adpd_debug_set,
+	.get_fac_cmd = adpd_get_fac_cmd,
 };
 #endif
 
@@ -45,7 +49,7 @@ static struct hrm_func adpd_func = {
 #define SLAVE_ADDR_ADPD 0x64
 
 int hrm_debug = 1;
-int hrm_info;
+int hrm_info = 0;
 
 module_param(hrm_debug, int, S_IRUGO | S_IWUSR);
 module_param(hrm_info, int, S_IRUGO | S_IWUSR);
@@ -73,8 +77,8 @@ static void __hrm_debug_device_data(struct hrm_device_data *data)
 	HRM_dbg("%s irq_state %d\n", __func__, data->irq_state);
 	HRM_dbg("%s led_current %d\n", __func__, data->led_current);
 	HRM_dbg("%s hrm_threshold %d\n", __func__, data->hrm_threshold);
-	HRM_dbg("%s eol_test_is_enable %d\n", __func__, data->eol_test_is_enable);	
-	HRM_dbg("%s eol_test_status %d\n", __func__, data->eol_test_status);	
+	HRM_dbg("%s eol_test_is_enable %d\n", __func__, data->eol_test_is_enable);
+	HRM_dbg("%s eol_test_status %d\n", __func__, data->eol_test_status);
 	HRM_dbg("%s lib_ver %s\n", __func__, data->lib_ver);
 	HRM_dbg("===== %s =====\n", __func__);
 }
@@ -99,7 +103,7 @@ static void hrm_init_device_data(struct hrm_device_data *data)
 	data->eol_test_is_enable = 0;
 	data->eol_test_status = 0;
 	data->reg_read_buf = 0;
-	data->lib_ver = NULL;	
+	data->lib_ver = NULL;
 }
 
 static void hrm_irq_set_state(struct hrm_device_data *data, int irq_enable)
@@ -243,7 +247,7 @@ static int hrm_power_ctrl(struct hrm_device_data *data, int onoff)
 			}
 		}
 	}
-	
+
 done:
 	regulator_put(regulator_led_3p3);
 	regulator_put(regulator_vdd_1p8);
@@ -336,6 +340,7 @@ static int hrm_enable(struct hrm_device_data *data, enum hrm_mode mode)
 static int hrm_disable(struct hrm_device_data *data, enum hrm_mode mode)
 {
 	int err;
+
 	HRM_dbg("%s\n", __func__);
 
 	hrm_irq_set_state(data, HRM_OFF);
@@ -374,6 +379,7 @@ static int hrm_read_data(struct hrm_device_data *data,
 static int hrm_eol_test_onoff(struct hrm_device_data *data, int onoff)
 {
 	int err;
+
 	HRM_dbg("%s: %d\n", __func__, onoff);
 
 	if (onoff) {
@@ -387,8 +393,7 @@ static int hrm_eol_test_onoff(struct hrm_device_data *data, int onoff)
 			HRM_dbg("%s fail err = %d\n", __func__, err);
 			return err;
 		}
-	}
-	else {
+	} else {
 		data->eol_test_is_enable = 0;
 		if (data->h_func == NULL) {
 			HRM_dbg("%s - not mapped function\n", __func__);
@@ -605,9 +610,9 @@ static ssize_t hrm_led_current_show(struct device *dev,
 		return err;
 	}
 	data->led_current = (led1 & 0xff) | ((led2 & 0xff) << 8) | ((led3 & 0xff) << 16) | ((led4 & 0xff) << 24);
-	mutex_unlock(&data->activelock);	
-	HRM_info("%s led1 0x%02x, led2 0x%02x, led3 0x%02x, led4 0x%02x\n",
-		__func__, led1, led2, led3, led4);
+	mutex_unlock(&data->activelock);
+	/* HRM_info("%s led1 0x%02x, led2 0x%02x, led3 0x%02x, led4 0x%02x\n",
+		__func__, led1, led2, led3, led4); */
 
 	return snprintf(buf, PAGE_SIZE, "%04X\n", data->led_current);
 }
@@ -752,6 +757,7 @@ static ssize_t hrm_eol_test_show(struct device *dev,
 	struct device_attribute *attr, char *buf)
 {
 	struct hrm_device_data *data = dev_get_drvdata(dev);
+
 	return snprintf(buf, PAGE_SIZE, "%u\n", data->eol_test_is_enable);
 }
 
@@ -935,6 +941,7 @@ struct device_attribute *attr, char *buf)
 	struct hrm_device_data *data = dev_get_drvdata(dev);
 	int err;
 	u64 device_id = 0;
+
 	err = hrm_power_ctrl(data, HRM_ON);
 	if (err < 0)
 		HRM_dbg("%s hrm_regulator_on fail err = %d\n",
@@ -948,6 +955,68 @@ struct device_attribute *attr, char *buf)
 		__func__, err);
 
 	return snprintf(buf, PAGE_SIZE, "%lld\n", device_id);
+}
+
+static ssize_t part_type_show(struct device *dev,
+struct device_attribute *attr, char *buf)
+{
+	struct hrm_device_data *data = dev_get_drvdata(dev);
+	int err;
+	u16 part_type = 0;
+
+	err = hrm_power_ctrl(data, HRM_ON);
+	if (err < 0)
+		HRM_dbg("%s hrm_regulator_on fail err = %d\n",
+		__func__, err);
+
+	data->h_func->get_part_type(&part_type);
+
+	err = hrm_power_ctrl(data, HRM_OFF);
+	if (err < 0)
+		HRM_dbg("%s hrm_regulator_off fail err = %d\n",
+		__func__, err);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", part_type);
+}
+
+static ssize_t i2c_err_cnt_show(struct device *dev,
+struct device_attribute *attr, char *buf)
+{
+	struct hrm_device_data *data = dev_get_drvdata(dev);
+	u32 err_cnt = 0;
+
+	data->h_func->get_i2c_err_cnt(&err_cnt);
+
+	return snprintf(buf, PAGE_SIZE, "%d\n", err_cnt);
+}
+
+static ssize_t curr_adc_show(struct device *dev,
+struct device_attribute *attr, char *buf)
+{
+	struct hrm_device_data *data = dev_get_drvdata(dev);
+	u16 ir_curr = 0;
+	u16 red_curr = 0;
+	u32 ir_adc = 0;
+	u32 red_adc = 0;
+
+	data->h_func->get_curr_adc(&ir_curr, &red_curr, &ir_adc, &red_adc);
+
+	return snprintf(buf, PAGE_SIZE,
+		"\"HRIC\":\"%d\",\"HRRC\":\"%d\",\"HRIA\":\"%d\",\"HRRA\":\"%d\"\n",
+		ir_curr, red_curr, ir_adc, red_adc);
+}
+
+static ssize_t hrm_factory_cmd_show(struct device *dev,
+struct device_attribute *attr, char *buf)
+{
+	struct hrm_device_data *data = dev_get_drvdata(dev);
+	static char cmd_result[MAX_BUF_LEN];
+
+	data->h_func->get_fac_cmd(cmd_result);
+
+	HRM_dbg("%s cmd_result = %s\n", __func__, cmd_result);
+
+	return snprintf(buf, PAGE_SIZE, "%s\n", cmd_result);
 }
 
 static DEVICE_ATTR(name, S_IRUGO, hrm_name_show, NULL);
@@ -969,6 +1038,10 @@ static DEVICE_ATTR(read_reg, S_IRUGO | S_IWUSR | S_IWGRP,
 static DEVICE_ATTR(write_reg, S_IWUSR | S_IWGRP, NULL, hrm_write_reg_store);
 static DEVICE_ATTR(hrm_debug, S_IRUGO | S_IWUSR | S_IWGRP, hrm_debug_show, hrm_debug_store);
 static DEVICE_ATTR(device_id, S_IRUGO, device_id_show, NULL);
+static DEVICE_ATTR(part_type, S_IRUGO, part_type_show, NULL);
+static DEVICE_ATTR(i2c_err_cnt, S_IRUGO, i2c_err_cnt_show, NULL);
+static DEVICE_ATTR(curr_adc, S_IRUGO, curr_adc_show, NULL);
+static DEVICE_ATTR(hrm_factory_cmd, S_IRUGO, hrm_factory_cmd_show, NULL);
 
 static struct device_attribute *hrm_sensor_attrs[] = {
 	&dev_attr_name,
@@ -984,7 +1057,11 @@ static struct device_attribute *hrm_sensor_attrs[] = {
 	&dev_attr_read_reg,
 	&dev_attr_write_reg,
 	&dev_attr_device_id,
+	&dev_attr_part_type,
+	&dev_attr_i2c_err_cnt,
+	&dev_attr_curr_adc,
 	&dev_attr_hrm_debug,
+	&dev_attr_hrm_factory_cmd,
 	NULL,
 };
 
@@ -1325,6 +1402,7 @@ int hrm_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	goto done;
 
 dev_set_drvdata_failed:
+	free_irq(data->hrm_irq, data);
 err_setup_irq:
 	sensors_unregister(data->dev, hrm_sensor_attrs);
 hrm_sensor_register_failed:
@@ -1335,7 +1413,6 @@ err_sysfs_create_group:
 err_sensors_create_symlink:
 	input_unregister_device(data->hrm_input_dev);
 err_input_register_device:
-	input_free_device(data->hrm_input_dev);
 err_input_allocate_device:
 hrm_init_device_failed:
 	hrm_power_ctrl(data, HRM_OFF);
@@ -1370,6 +1447,7 @@ int hrm_remove(struct i2c_client *client)
 	int err;
 
 	HRM_dbg("%s\n", __func__);
+	hrm_power_ctrl(data, HRM_OFF);	
 	err = hrm_deinit_device(data);
 	if (err)
 		HRM_dbg("%s hrm_deinit device fail err = %d\n",
@@ -1380,7 +1458,6 @@ int hrm_remove(struct i2c_client *client)
 			   &hrm_attribute_group);
 	sensors_remove_symlink(data->hrm_input_dev);
 	input_unregister_device(data->hrm_input_dev);
-	input_free_device(data->hrm_input_dev);
 
 	if (data->hrm_pinctrl) {
 #ifdef CONFIG_ARCH_MSM
@@ -1395,7 +1472,7 @@ int hrm_remove(struct i2c_client *client)
 	if (data->pins_sleep)
 		data->pins_sleep = NULL;
 	disable_irq(data->hrm_irq);
-	free_irq(data->hrm_irq, NULL);
+	free_irq(data->hrm_irq, data);
 	gpio_free(data->hrm_int);
 	mutex_destroy(&data->i2clock);
 	mutex_destroy(&data->activelock);

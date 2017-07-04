@@ -790,13 +790,14 @@ static int esa_fw_startup(void)
 
 	/* Not to enter SICD_AUD */
 	lpass_update_lpclock(LPCLK_CTRLID_LEGACY, true);
+	lpass_mif_power_on();
 	/* power on */
 	si.fw_use_dram = true;
 	esa_debug("Turn on CA5...\n");
 	esa_fw_download();
 
 	/* wait for fw ready */
-	ret = wait_event_interruptible_timeout(esa_wq, si.fw_ready, HZ / 2);
+	ret = wait_event_interruptible_timeout(esa_wq, si.fw_ready, HZ * 3);
 	if (!ret) {
 #ifdef CONFIG_SOC_EXYNOS8890
 		u32 cfg;
@@ -931,8 +932,10 @@ int esa_effect_write(int type, int *value, int count)
 	int i, *effect_value;
 	int ret = 0;
 
-	if (!check_esa_compr_state() ||
-	   (pm_runtime_get_sync(&si.pdev->dev) < 0))
+	if (!check_esa_compr_state())
+		return 0;
+
+	if (pm_runtime_get_sync(&si.pdev->dev) < 0)
 		return 0;
 
 	effect_value = value;
@@ -2450,6 +2453,8 @@ static void esa_fw_request_complete(const struct firmware *fw_sram, void *ctx)
 	memcpy(si.fwmem, fw_sram->data, si.fw_sbin_size);
 	memcpy(si.fwmem + si.fw_sbin_size, fw_dram->data, si.fw_dbin_size);
 
+	release_firmware(fw_dram);
+
 	esa_info("FW Loaded (SRAM = %d, DRAM = %d)\n",
 			si.fw_sbin_size, si.fw_dbin_size);
 
@@ -2578,8 +2583,6 @@ static int esa_probe(struct platform_device *pdev)
 	pm_runtime_use_autosuspend(dev);
 	pm_runtime_set_autosuspend_delay(dev, 300);
 	pm_runtime_enable(dev);
-	pm_runtime_get_sync(dev);
-	pm_runtime_put_sync(dev);
 #else
 	esa_do_resume(dev);
 #endif

@@ -60,17 +60,69 @@
  * @data: Buffer to get random bytes
  * @len: the lengh of random bytes
  */
-static int crypto_cc_rng_get_bytes(u8 *data, unsigned int len)
+static void crypto_cc_rng_get_bytes(u8 *data, unsigned int len)
 {
-    struct crypto_rng *drng = NULL;
-    int err;
- 
-    drng = crypto_alloc_rng("stdrng", 0, 0);
-    err = crypto_rng_get_bytes(drng, data, len);
-    if (err != len)
-        ecryptfs_printk(KERN_ERR, "Error getting random bytes in CC mode (err=%d, len=%d)\n", err, len);
-    crypto_free_rng(drng);
-    return err;
+	struct crypto_rng *rng = NULL;
+	char *seed = NULL;
+	int read_bytes = 0;
+	int trialcount = 10;
+	int ret = 0;
+	struct file *filp = NULL;
+	mm_segment_t oldfs;
+
+	seed = kmalloc(SEED_LEN, GFP_KERNEL);
+	if (!seed) {
+		ecryptfs_printk(KERN_ERR, "Failed to get memory space for seed\n");
+		goto err_out;
+	}
+
+	filp = filp_open("/dev/random", O_RDONLY, 0);
+	if (IS_ERR(filp)) {
+		ecryptfs_printk(KERN_ERR, "Failed to open /dev/random\n");
+		goto err_out;
+	}
+
+	oldfs = get_fs();
+	set_fs(KERNEL_DS);
+	memset((void *)seed, 0, SEED_LEN);
+
+	while (trialcount > 0) {
+		read_bytes += filp->f_op->read(filp, &(seed[read_bytes]), SEED_LEN-read_bytes, &filp->f_pos);
+		if (read_bytes != SEED_LEN)
+			trialcount--;
+		else
+			break;
+	}
+	set_fs(oldfs);
+
+	if (read_bytes != SEED_LEN) {
+		ecryptfs_printk(KERN_ERR, "Failed to get enough random bytes (read=%d/request=%d)\n", read_bytes, SEED_LEN);
+		goto err_out;
+	}
+
+	rng = crypto_alloc_rng("stdrng", 0, 0);
+	if (IS_ERR(rng)) {
+		ecryptfs_printk(KERN_ERR, "RNG allocateion fail \t Not Available: %ld\n", PTR_ERR(rng));
+		goto err_out;
+	}
+
+	ret = crypto_rng_reset(rng, seed, SEED_LEN);
+	if (ret < 0) {
+ 		ecryptfs_printk(KERN_ERR, "rng reset fail (%d)\n", ret);
+	}
+
+	ret = crypto_rng_get_bytes(rng, data, len);
+	if (ret < 0) {
+		ecryptfs_printk(KERN_ERR, "generate_random failed to generate random number (%d)\n", ret);
+	} else {
+		ecryptfs_printk(KERN_ERR, "generate_random succesfully generated random number (%d)\n", ret);
+	}
+	crypto_free_rng(rng);
+
+err_out :
+	if (seed) kfree(seed);
+	if (filp) filp_close(filp, NULL);
+        return;
 }
 #endif
 
@@ -1449,6 +1501,10 @@ static int ecryptfs_write_headers_virt(char *page_virt, size_t max,
 	size_t offset;
 
 	offset = ECRYPTFS_FILE_SIZE_BYTES;
+#ifdef CONFIG_ECRYPTFS_FEK_INTEGRITY
+	memset(crypt_stat->hash, 0, FEK_HASH_SIZE);
+	crypt_stat->flags |= ECRYPTFS_ENABLE_HMAC;
+#endif
 	write_ecryptfs_marker((page_virt + offset), &written);
 	offset += written;
 	ecryptfs_write_crypt_stat_flags((page_virt + offset), crypt_stat,
@@ -1463,6 +1519,9 @@ static int ecryptfs_write_headers_virt(char *page_virt, size_t max,
 	if (rc)
 		ecryptfs_printk(KERN_WARNING, "Error generating key packet "
 				"set; rc = [%d]\n", rc);
+#ifdef CONFIG_ECRYPTFS_FEK_INTEGRITY
+	memcpy((page_virt + HASH_OFFSET), crypt_stat->hash, FEK_HASH_SIZE);
+#endif
 	if (size) {
 		offset += written;
 		*size = offset;
@@ -1668,6 +1727,9 @@ static int ecryptfs_read_headers_virt(char *page_virt,
 	int rc = 0;
 	int offset;
 	int bytes_read;
+#ifdef CONFIG_ECRYPTFS_FEK_INTEGRITY
+	memcpy(crypt_stat->hash, (page_virt + HASH_OFFSET), FEK_HASH_SIZE);
+#endif
 
 	ecryptfs_set_default_sizes(crypt_stat);
 	crypt_stat->mount_crypt_stat = &ecryptfs_superblock_to_private(

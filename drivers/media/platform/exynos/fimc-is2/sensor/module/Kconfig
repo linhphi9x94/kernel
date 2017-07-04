@@ -175,6 +175,12 @@ config CAMERA_SENSOR_4H5_OBJ
         default n
         help
           Use to build 4H5 camera sensor.
+config CAMERA_SENSOR_4H5YC_OBJ
+        bool "Use 4H5YC camera sensor"
+        depends on CAMERA_MODULE_SELECT
+        default n
+        help
+          Use to build 4H5YC camera sensor.
 config CAMERA_SENSOR_SR261_OBJ
         bool "Use SR261 camera sensor"
         depends on CAMERA_MODULE_SELECT

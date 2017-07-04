@@ -23,7 +23,7 @@
 */
 
 #define PREDEFINED_FILE_NAME		"/efs/FactoryApp/predefine"					
-#define COLOR_NUM 			5
+#define COLOR_NUM 			6
 #define COLOR_NUM_MAX		16
 
 #define COLOR_ID_VERSION_FILE_LENGTH		30

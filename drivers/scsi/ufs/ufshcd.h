@@ -542,6 +542,7 @@ struct ufs_hba {
 #define UFSHCI_QUIRK_BROKEN_REQ_LIST_CLR	BIT(1)
 #define UFSHCI_QUIRK_USE_OF_HCE			BIT(2)
 #define UFSHCI_QUIRK_SKIP_INTR_AGGR		BIT(3)
+#define UFSHCI_QUIRK_USE_ABORT_TASK		BIT(4)
 
 	/* Device deviations from standard UFS device spec. */
 	unsigned int dev_quirks;

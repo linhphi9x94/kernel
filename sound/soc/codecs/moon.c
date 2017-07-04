@@ -42,6 +42,8 @@
 
 #define MOON_FRF_COEFFICIENT_LEN 4
 
+#define MOON_NUM_ASRC 2
+
 static int moon_frf_bytes_put(struct snd_kcontrol *kcontrol,
 		      struct snd_ctl_elem_value *ucontrol);
 
@@ -197,6 +199,7 @@ struct moon_priv {
 	struct arizona_priv core;
 	struct arizona_fll fll[3];
 	struct moon_compr compr_info[MOON_NUM_COMPR_DAI];
+	unsigned int asrc_ena_cache[MOON_NUM_ASRC];
 
 	struct mutex fw_lock;
 };
@@ -642,6 +645,80 @@ static int moon_adsp_power_ev(struct snd_soc_dapm_widget *w,
 	}
 
 	return wm_adsp2_early_event(w, kcontrol, event, freq);
+}
+
+/* These are called to under the dapm mutex so shouldn't require more locking */
+
+static int moon_asrc_ev(struct snd_soc_dapm_widget *w,
+			struct snd_kcontrol *kcontrol,
+			int event,
+			unsigned int reg,
+			unsigned int *cache)
+{
+	struct snd_soc_codec *codec = w->codec;
+	struct arizona *arizona = dev_get_drvdata(codec->dev->parent);
+	unsigned int val;
+	bool async_active;
+
+	/* If ASYNCCLK is active, write the value out as normal */
+	regmap_read(arizona->regmap, ARIZONA_ASYNC_CLOCK_1, &val);
+
+	if (val & ARIZONA_ASYNC_CLK_ENA_MASK)
+		async_active = 1;
+	else
+		async_active = 0;
+
+	switch (event) {
+	case SND_SOC_DAPM_POST_PMU:
+		*cache |= (1 <<w->shift);
+		dev_dbg(arizona->dev,
+			"%s: %s: set bit %d: ASRC%d cache: 0x%04x -> 0x%04x\n",
+			__func__, w->name, w->shift,
+			reg == CLEARWATER_ASRC1_ENABLE ? 1 : 2,
+			*cache & ~(1 << w->shift), *cache);
+		break;
+	case SND_SOC_DAPM_POST_PMD:
+		*cache &= ~(1 << w->shift);
+		dev_dbg(arizona->dev,
+			"%s: %s: clear bit %d: ASRC%d cache 0x%04x -> 0x%04x\n",
+			__func__, w->name, w->shift,
+			reg == CLEARWATER_ASRC1_ENABLE ? 1 : 2,
+			*cache | (1 << w->shift), *cache);
+		break;
+	default:
+		break;
+	}
+
+	dev_dbg(arizona->dev, "%s: ASYNCCLK is %s\n", __func__,
+		async_active ? "up" : "down");
+
+	if (async_active)
+		regmap_update_bits(arizona->regmap, reg, (1 << w->shift),
+				   *cache);
+
+	return 0;
+}
+
+static int moon_asrc1_ev(struct snd_soc_dapm_widget *w,
+			struct snd_kcontrol *kcontrol,
+			int event)
+{
+	struct snd_soc_codec *codec = w->codec;
+	struct moon_priv *moon = snd_soc_codec_get_drvdata(codec);
+
+	return moon_asrc_ev(w, kcontrol, event, CLEARWATER_ASRC1_ENABLE,
+			   &moon->asrc_ena_cache[0]);
+}
+
+static int moon_asrc2_ev(struct snd_soc_dapm_widget *w,
+			struct snd_kcontrol *kcontrol,
+			int event)
+{
+	struct snd_soc_codec *codec = w->codec;
+	struct moon_priv *moon = snd_soc_codec_get_drvdata(codec);
+
+	return moon_asrc_ev(w, kcontrol, event, CLEARWATER_ASRC2_ENABLE,
+			    &moon->asrc_ena_cache[1]);
 }
 
 static DECLARE_TLV_DB_SCALE(ana_tlv, 0, 100, 0);
@@ -1318,12 +1395,56 @@ static const struct snd_kcontrol_new moon_output_anc_src[] = {
 	SOC_DAPM_ENUM("SPKDAT1R ANC Source", arizona_output_anc_src[9]),
 };
 
+static int moon_asyncclk_ev(struct snd_soc_dapm_widget *w,
+			       struct snd_kcontrol *kcontrol,
+			       int event)
+{
+	struct snd_soc_codec *codec = w->codec;
+	struct arizona *arizona = dev_get_drvdata(codec->dev->parent);
+	struct moon_priv *moon = snd_soc_codec_get_drvdata(codec);
+
+	switch (event) {
+	case SND_SOC_DAPM_POST_PMU:
+		/* Wait at least 1.5ms for asyncclk to stabilise */
+		usleep_range(1500, 1600);
+
+		dev_dbg(arizona->dev,
+			"%s: write out cached ENA bits 1:[0x%04x] 2:[0x%04x]\n",
+			__func__, moon->asrc_ena_cache[0],
+			moon->asrc_ena_cache[1]);
+
+		if (moon->asrc_ena_cache[0])
+			regmap_update_bits(arizona->regmap,
+					   CLEARWATER_ASRC1_ENABLE, 0xf,
+					   moon->asrc_ena_cache[0]);
+
+		if (moon->asrc_ena_cache[1])
+			regmap_update_bits(arizona->regmap,
+					   CLEARWATER_ASRC2_ENABLE, 0xf,
+					   moon->asrc_ena_cache[1]);
+		break;
+	case SND_SOC_DAPM_PRE_PMD:
+		dev_dbg(arizona->dev, "%s: clear all ENA bits \n",
+			__func__);
+		regmap_update_bits(arizona->regmap,
+				   CLEARWATER_ASRC1_ENABLE, 0xf, 0);
+		regmap_update_bits(arizona->regmap,
+				   CLEARWATER_ASRC2_ENABLE, 0xf, 0);
+		break;
+	default:
+		break;
+	}
+
+	return 0;
+}
+
 static const struct snd_soc_dapm_widget moon_dapm_widgets[] = {
 SND_SOC_DAPM_SUPPLY("SYSCLK", ARIZONA_SYSTEM_CLOCK_1, ARIZONA_SYSCLK_ENA_SHIFT,
 		    0, moon_sysclk_ev,
 		    SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_PRE_PMD),
 SND_SOC_DAPM_SUPPLY("ASYNCCLK", ARIZONA_ASYNC_CLOCK_1,
-		    ARIZONA_ASYNC_CLK_ENA_SHIFT, 0, NULL, 0),
+		    ARIZONA_ASYNC_CLK_ENA_SHIFT, 0, moon_asyncclk_ev,
+		    SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_PRE_PMD),
 SND_SOC_DAPM_SUPPLY("OPCLK", ARIZONA_OUTPUT_SYSTEM_CLOCK,
 		    ARIZONA_OPCLK_ENA_SHIFT, 0, NULL, 0),
 SND_SOC_DAPM_SUPPLY("ASYNCOPCLK", ARIZONA_OUTPUT_ASYNC_CLOCK,
@@ -1559,7 +1680,7 @@ SND_SOC_DAPM_PGA("Tone Generator 1", ARIZONA_TONE_GENERATOR_1,
 SND_SOC_DAPM_PGA("Tone Generator 2", ARIZONA_TONE_GENERATOR_1,
 		 ARIZONA_TONE2_ENA_SHIFT, 0, NULL, 0),
 
-SND_SOC_DAPM_SIGGEN("HAPTICS"),
+SND_SOC_DAPM_MIC("HAPTICS", NULL),
 
 SND_SOC_DAPM_MUX("AEC Loopback", ARIZONA_DAC_AEC_CONTROL_1,
 		       ARIZONA_AEC_LOOPBACK_ENA_SHIFT, 0,
@@ -1698,23 +1819,39 @@ SND_SOC_DAPM_PGA("LHPF3", ARIZONA_HPLPF3_1, ARIZONA_LHPF3_ENA_SHIFT, 0,
 SND_SOC_DAPM_PGA("LHPF4", ARIZONA_HPLPF4_1, ARIZONA_LHPF4_ENA_SHIFT, 0,
 		 NULL, 0),
 
-SND_SOC_DAPM_PGA("ASRC1IN1L", CLEARWATER_ASRC1_ENABLE,
-		CLEARWATER_ASRC1_IN1L_ENA_SHIFT, 0, NULL, 0),
-SND_SOC_DAPM_PGA("ASRC1IN1R", CLEARWATER_ASRC1_ENABLE,
-		CLEARWATER_ASRC1_IN1R_ENA_SHIFT, 0, NULL, 0),
-SND_SOC_DAPM_PGA("ASRC1IN2L", CLEARWATER_ASRC1_ENABLE,
-		CLEARWATER_ASRC1_IN2L_ENA_SHIFT, 0, NULL, 0),
-SND_SOC_DAPM_PGA("ASRC1IN2R", CLEARWATER_ASRC1_ENABLE,
-		CLEARWATER_ASRC1_IN2R_ENA_SHIFT, 0, NULL, 0),
+SND_SOC_DAPM_PGA_E("ASRC1IN1L", SND_SOC_NOPM,
+		   CLEARWATER_ASRC1_IN1L_ENA_SHIFT, 0, NULL, 0,
+		   moon_asrc1_ev,
+		   SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
+SND_SOC_DAPM_PGA_E("ASRC1IN1R", SND_SOC_NOPM,
+		   CLEARWATER_ASRC1_IN1R_ENA_SHIFT, 0, NULL, 0,
+		   moon_asrc1_ev,
+		   SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
+SND_SOC_DAPM_PGA_E("ASRC1IN2L", SND_SOC_NOPM,
+		   CLEARWATER_ASRC1_IN2L_ENA_SHIFT, 0, NULL, 0,
+		   moon_asrc1_ev,
+		   SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
+SND_SOC_DAPM_PGA_E("ASRC1IN2R", SND_SOC_NOPM,
+		   CLEARWATER_ASRC1_IN2R_ENA_SHIFT, 0, NULL, 0,
+		   moon_asrc1_ev,
+		   SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
 
-SND_SOC_DAPM_PGA("ASRC2IN1L", CLEARWATER_ASRC2_ENABLE,
-		CLEARWATER_ASRC2_IN1L_ENA_SHIFT, 0, NULL, 0),
-SND_SOC_DAPM_PGA("ASRC2IN1R", CLEARWATER_ASRC2_ENABLE,
-		CLEARWATER_ASRC2_IN1R_ENA_SHIFT, 0, NULL, 0),
-SND_SOC_DAPM_PGA("ASRC2IN2L", CLEARWATER_ASRC2_ENABLE,
-		CLEARWATER_ASRC2_IN2L_ENA_SHIFT, 0, NULL, 0),
-SND_SOC_DAPM_PGA("ASRC2IN2R", CLEARWATER_ASRC2_ENABLE,
-		CLEARWATER_ASRC2_IN2R_ENA_SHIFT, 0, NULL, 0),
+SND_SOC_DAPM_PGA_E("ASRC2IN1L", SND_SOC_NOPM,
+		   CLEARWATER_ASRC2_IN1L_ENA_SHIFT, 0, NULL, 0,
+		   moon_asrc2_ev,
+		   SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
+SND_SOC_DAPM_PGA_E("ASRC2IN1R", SND_SOC_NOPM,
+		   CLEARWATER_ASRC2_IN1R_ENA_SHIFT, 0, NULL, 0,
+		   moon_asrc2_ev,
+		   SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
+SND_SOC_DAPM_PGA_E("ASRC2IN2L", SND_SOC_NOPM,
+		   CLEARWATER_ASRC2_IN2L_ENA_SHIFT, 0, NULL, 0,
+		   moon_asrc2_ev,
+		   SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
+SND_SOC_DAPM_PGA_E("ASRC2IN2R", SND_SOC_NOPM,
+		   CLEARWATER_ASRC2_IN2R_ENA_SHIFT, 0, NULL, 0,
+		   moon_asrc2_ev,
+		   SND_SOC_DAPM_POST_PMU | SND_SOC_DAPM_POST_PMD),
 
 SND_SOC_DAPM_PGA("ISRC1DEC1", ARIZONA_ISRC_1_CTRL_3,
 		 ARIZONA_ISRC1_DEC0_ENA_SHIFT, 0, NULL, 0),

@@ -373,7 +373,7 @@ config SENSORS_SSP_PROX_FACTORYCAL
 
 config SENSORS_SSP_LIGHT_REPORT_LUX
 	tristate "Sensors ssp light sensor reporting lux"
-	default n
+	default y if ANDROID_MAJOR_VERSION = "n"
 	depends on SPI
 	help
 	  If you want to report lux, it should be set.
@@ -548,6 +548,17 @@ config SENSORS_SSP_LUCKY
 
 config SENSORS_SSP_GRACE
 	tristate "GRACE Proejct"
+	default n
+	depends on SPI
+	help
+	  Binary file for ssp driver.
+          If you say yes here you get GRACE project support for
+       	  factory test.
+ 	  To compile this driver as a module, choose M here: the
+ 	  module will be called ssp.
+	  
+config SENSORS_SSP_HAECHI
+	tristate "HAECHI Proejct"
 	default n
 	depends on SPI
 	help

@@ -337,6 +337,7 @@ int decon_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 	int ret = 0;
 	int shift = 0;
 	struct decon_mode_info psr;
+	struct dsim_device *dsim = container_of(decon->output_sd, struct dsim_device, sd);
 
 	if ((decon->pdata->out_type == DECON_OUT_DSI &&
 			decon->state == DECON_STATE_INIT) ||
@@ -398,6 +399,9 @@ int decon_pan_display(struct fb_var_screeninfo *var, struct fb_info *info)
 			< 0)
 		decon_err("%s: wait_for_update_timeout\n", __func__);
 
+	if (decon->pdata->out_type == DECON_OUT_DSI)
+		dsim->req_display_on = true;
+	
 	decon_lpd_unblock(decon);
 	return ret;
 }

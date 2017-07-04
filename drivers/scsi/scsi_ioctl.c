@@ -153,14 +153,30 @@ static int srpmb_ioctl_secu_prot_command(struct scsi_device *sdev, char *cmd,
 		dma_direction = DMA_FROM_DEVICE;
 		bufflen = req->inlen;
 		buf = kzalloc(bufflen, GFP_KERNEL);
+<<<<<<< HEAD
 		if (!buf)
 			goto err_kzalloc;
+=======
+		if (!virt_addr_valid(buf)) {
+			sdev_printk(KERN_INFO, sdev, "prot_in_out buf address: %pK\n", buf);
+			result = -ENOMEM;
+			goto err_kzalloc;
+		}
+>>>>>>> 7916c2a... samsung: DQE7 Kernel
 	} else if (prot_in_out == SCSI_IOCTL_SECURITY_PROTOCOL_OUT) {
 		dma_direction = DMA_TO_DEVICE;
 		bufflen = req->outlen;
 		buf = kzalloc(bufflen, GFP_KERNEL);
+<<<<<<< HEAD
 		if (!buf)
 			goto err_kzalloc;
+=======
+		if (!virt_addr_valid(buf)) {
+			sdev_printk(KERN_INFO, sdev, "prot_in_out buf address: %pK\n", buf);
+			result = -ENOMEM;
+			goto err_kzalloc;
+		}
+>>>>>>> 7916c2a... samsung: DQE7 Kernel
 		memcpy(buf, req->rpmb_data, bufflen);
 	} else {
 		sdev_printk(KERN_INFO, sdev,
@@ -191,7 +207,11 @@ err_pre_buf_alloc:
 	return result;
 err_kzalloc:
 	printk(KERN_INFO "%s kzalloc faild\n", __func__);
+<<<<<<< HEAD
 	return -1;
+=======
+	return result;
+>>>>>>> 7916c2a... samsung: DQE7 Kernel
 }
 #endif
 

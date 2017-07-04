@@ -315,11 +315,9 @@ int fimc_is_vender_fw_prepare(struct fimc_is_vender *vender)
 	int ret = 0;
 	struct fimc_is_core *core;
 	struct fimc_is_device_preproc *device;
-	struct fimc_is_vender_specific *specific;
 
 	BUG_ON(!vender);
 
-	specific = vender->private_data;
 	core = container_of(vender, struct fimc_is_core, vender);
 	device = &core->preproc;
 
@@ -362,10 +360,12 @@ int fimc_is_vender_fw_filp_open(struct fimc_is_vender *vender, struct file **fp,
 	int ret = FW_SKIP;
 	struct fimc_is_from_info *sysfs_finfo;
 	char fw_path[FIMC_IS_PATH_LEN];
+#ifdef CAMERA_MODULE_FRONT_SETF_DUMP
 	struct fimc_is_core *core;
+	core = container_of(vender, struct fimc_is_core, vender);
+#endif
 
 	fimc_is_sec_get_sysfs_finfo(&sysfs_finfo);
-	core = container_of(vender, struct fimc_is_core, vender);
 	memset(fw_path, 0x00, sizeof(fw_path));
 
 	if (bin_type == FIMC_IS_BIN_FW) {
@@ -415,11 +415,14 @@ int fimc_is_vender_preproc_fw_load(struct fimc_is_vender *vender)
 	int ret = 0;
 	struct fimc_is_core *core;
 	struct fimc_is_device_preproc *device;
+#if defined(CONFIG_PREPROCESSOR_STANDBY_USE)
 	struct fimc_is_vender_specific *specific;
-
+#endif
 	BUG_ON(!vender);
 
+#if defined(CONFIG_PREPROCESSOR_STANDBY_USE)
 	specific = vender->private_data;
+#endif
 	core = container_of(vender, struct fimc_is_core, vender);
 	device = &core->preproc;
 
@@ -807,21 +810,53 @@ p_err:
 int fimc_is_vender_setfile_sel(struct fimc_is_vender *vender, char *setfile_name)
 {
 	int ret = 0;
+#if defined(CONFIG_COMPANION_USE) || defined(SELECT_SETFILE_BY_FROM_VERSION)
 	struct fimc_is_core *core;
+#endif
+#ifdef SELECT_SETFILE_BY_FROM_VERSION
+	char dst_name[50];
+	struct fimc_is_from_info *sysfs_finfo;
+	fimc_is_sec_get_sysfs_finfo(&sysfs_finfo);
+#endif
 
 	BUG_ON(!vender);
 	BUG_ON(!setfile_name);
 
+#if defined(CONFIG_COMPANION_USE) || defined(SELECT_SETFILE_BY_FROM_VERSION)
 	core = container_of(vender, struct fimc_is_core, vender);
-
+#endif
 #ifdef CONFIG_COMPANION_USE
 	fimc_is_s_int_comb_isp(core, false, INTMR2_INTMCIS22);
 #endif
 
+#ifdef SELECT_SETFILE_BY_FROM_VERSION
+	if (core->current_position == SENSOR_POSITION_REAR) {
+		if (fimc_is_sec_fw_module_compare(sysfs_finfo->header_ver, FW_IMX260_D)) {
+			snprintf(dst_name, sizeof(dst_name), "setfile_imx260_d.bin");
+		} else if (fimc_is_sec_fw_module_compare(sysfs_finfo->header_ver, FW_2L1_D)) {
+			snprintf(dst_name, sizeof(dst_name), "setfile_2l1_d.bin");
+		} else {
+			snprintf(dst_name, sizeof(dst_name), setfile_name);
+		}
+	} else {
+		if (fimc_is_sec_fw_module_compare(sysfs_finfo->header_ver, FW_IMX260_D) ||
+			fimc_is_sec_fw_module_compare(sysfs_finfo->header_ver, FW_2L1_D)) {
+			snprintf(dst_name, sizeof(dst_name), "setfile_4e6_d.bin");
+		} else {
+			snprintf(dst_name, sizeof(dst_name), setfile_name);
+		}
+	}
+
+	snprintf(vender->setfile_path, sizeof(vender->setfile_path), "%s%s",
+		FIMC_IS_SETFILE_SDCARD_PATH, setfile_name);
+	snprintf(vender->request_setfile_path, sizeof(vender->request_setfile_path), "%s",
+		dst_name);
+#else
 	snprintf(vender->setfile_path, sizeof(vender->setfile_path), "%s%s",
 		FIMC_IS_SETFILE_SDCARD_PATH, setfile_name);
 	snprintf(vender->request_setfile_path, sizeof(vender->request_setfile_path), "%s",
 		setfile_name);
+#endif
 
 	return ret;
 }
@@ -862,7 +897,6 @@ int fimc_is_vender_preprocessor_gpio_on_sel(struct fimc_is_vender *vender, u32 s
 {
 	int ret = 0;
 	struct fimc_is_core *core;
-	struct fimc_is_vender_specific *specific;
 
 #ifdef CONFIG_COMPANION_DCDC_USE
 	struct dcdc_power *dcdc;
@@ -874,12 +908,19 @@ int fimc_is_vender_preprocessor_gpio_on_sel(struct fimc_is_vender *vender, u32 s
 	struct exynos_platform_fimc_is_module *pdata;
 	struct fimc_is_module_enum *module;
 #endif
-
+	struct fimc_is_vender_specific *specific;
 	specific = vender->private_data;
+
 	core = container_of(vender, struct fimc_is_core, vender);
 
 	/* Set spi pin to out */
-	fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE);
+	if (specific->rear_sensor_id == SENSOR_NAME_S5K2L1)
+		fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE_INPU);
+	else if (specific->rear_sensor_id == SENSOR_NAME_IMX260)
+		fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE_INPD);
+	else
+		fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE);
+
 	fimc_is_spi_s_pin(&core->spi1, SPI_PIN_STATE_IDLE);
 
 #ifdef CONFIG_PREPROCESSOR_STANDBY_USE
@@ -979,19 +1020,24 @@ int fimc_is_vender_preprocessor_gpio_on(struct fimc_is_vender *vender, u32 scena
 
 int fimc_is_vender_sensor_gpio_on_sel(struct fimc_is_vender *vender, u32 scenario, u32 *gpio_scenario)
 {
-	struct fimc_is_core *core;
 	int ret = 0;
-
+#if 0
+	struct fimc_is_core *core;
 	core = container_of(vender, struct fimc_is_core, vender);
 
-#if 0
 	/* In dual camera scenario,
 	while loading cal data to C3 with spi in rear camera, changing spi config in front camera is not valid.
 	Due to this issue, disable spi config here. (C3 + spi0, spi1 use case in rear camera)
 	Need to consider this on other project later depending on spi use cases.
 	*/
 	/* Set spi pin to out */
-	fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE);
+	if (specific->rear_sensor_id == SENSOR_NAME_S5K2L1)
+		fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE_INPU);
+	else if (specific->rear_sensor_id == SENSOR_NAME_IMX260)
+		fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE_INPD);
+	else
+		fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE);
+
 	fimc_is_spi_s_pin(&core->spi1, SPI_PIN_STATE_IDLE);
 #endif
 
@@ -1009,20 +1055,25 @@ int fimc_is_vender_preprocessor_gpio_off_sel(struct fimc_is_vender *vender, u32 
 {
 	int ret = 0;
 	struct fimc_is_core *core;
-	struct fimc_is_vender_specific *specific;
 #if defined(CONFIG_OIS_USE)	
 	struct fimc_is_module_enum *module = module_data;
 #endif
 #ifdef CONFIG_SENSOR_RETENTION_USE
 	struct fimc_is_from_info *sysfs_finfo;
-
-	fimc_is_sec_get_sysfs_finfo(&sysfs_finfo);
 #endif
+	struct fimc_is_vender_specific *specific;
 	specific = vender->private_data;
+
 	core = container_of(vender, struct fimc_is_core, vender);
 
 	/* Set spi pin to out */
-	fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE);
+	if (specific->rear_sensor_id == SENSOR_NAME_S5K2L1)
+		fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE_INPU);
+	else if (specific->rear_sensor_id == SENSOR_NAME_IMX260)
+		fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE_INPD);
+	else
+		fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE);
+
 	fimc_is_spi_s_pin(&core->spi1, SPI_PIN_STATE_IDLE);
 
 #ifdef CONFIG_PREPROCESSOR_STANDBY_USE
@@ -1033,6 +1084,7 @@ int fimc_is_vender_preprocessor_gpio_off_sel(struct fimc_is_vender *vender, u32 
 		{
 			if (GET_SENSOR_STATE(specific->standby_state, SENSOR_STATE_COMPANION) == SENSOR_STATE_ON) {
 #ifdef CONFIG_SENSOR_RETENTION_USE
+				fimc_is_sec_get_sysfs_finfo(&sysfs_finfo);
 				if (specific->rear_sensor_id == SENSOR_NAME_S5K2L1 && sysfs_finfo->sensor_version >= 0xC0
 					&& force_caldata_dump == false) {
 					*gpio_scenario = GPIO_SCENARIO_SENSOR_RETENTION_ON;
@@ -1062,11 +1114,11 @@ int fimc_is_vender_preprocessor_gpio_off_sel(struct fimc_is_vender *vender, u32 
 int fimc_is_vender_preprocessor_gpio_off(struct fimc_is_vender *vender, u32 scenario, u32 gpio_scenario)
 {
 	int ret = 0;
+#ifdef CONFIG_PREPROCESSOR_STANDBY_USE
 	struct fimc_is_vender_specific *specific;
 
 	specific = vender->private_data;
 
-#ifdef CONFIG_PREPROCESSOR_STANDBY_USE
 	if (scenario == SENSOR_SCENARIO_NORMAL) {
 		if (gpio_scenario == GPIO_SCENARIO_STANDBY_ON
 #ifdef CONFIG_SENSOR_RETENTION_USE
@@ -1086,19 +1138,25 @@ int fimc_is_vender_preprocessor_gpio_off(struct fimc_is_vender *vender, u32 scen
 
 int fimc_is_vender_sensor_gpio_off_sel(struct fimc_is_vender *vender, u32 scenario, u32 *gpio_scenario)
 {
-	struct fimc_is_core *core;
 	int ret = 0;
 
+#if 0
+	struct fimc_is_core *core;
 	core = container_of(vender, struct fimc_is_core, vender);
 
-#if 0
 	/* In dual camera scenario,
 	while loading cal data to C3 with spi in rear camera, changing spi config in front camera is not valid.
 	Due to this issue, disable spi config here. (C3 + spi0, spi1 use case in rear camera)
 	Need to consider this on other project later depending on spi use cases.
 	*/
 	/* Set spi pin to out */
-	fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE);
+	if (specific->rear_sensor_id == SENSOR_NAME_S5K2L1)
+		fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE_INPU);
+	else if (specific->rear_sensor_id == SENSOR_NAME_IMX260)
+		fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE_INPD);
+	else
+		fimc_is_spi_s_pin(&core->spi0, SPI_PIN_STATE_IDLE);
+
 	fimc_is_spi_s_pin(&core->spi1, SPI_PIN_STATE_IDLE);
 #endif
 
@@ -1157,7 +1215,9 @@ void fimc_is_vender_itf_open(struct fimc_is_vender *vender, struct sensor_open_e
 	fimc_is_i2c_s_pin(specific->eeprom_client0, I2C_PIN_STATE_OFF);
 #endif
 	fimc_is_i2c_s_pin(core->client0, I2C_PIN_STATE_FW);
-	fimc_is_i2c_s_pin(core->client1, I2C_PIN_STATE_OFF);
+	if (specific->use_ois) {
+		fimc_is_i2c_s_pin(core->client1, I2C_PIN_STATE_OFF);
+	}
 
 	return;
 }

@@ -1,13 +1,13 @@
-/*                                                                                        
-* Secure RPMB header for Exynos scsi rpmb
-*                                                                                        
-* Copyright (C) 2016 Samsung Electronics Co., Ltd.
-*                                                                                        
-* This program is free software; you can redistribute it and/or modify                   
-* it under the terms of the GNU General Public License as published by                   
-* the Free Software Foundation; either version 2 of the License, or                      
-* (at your option) any later version.                                                    
-*/
+/*
+ * Secure RPMB header for Exynos scsi rpmb
+ *
+ * Copyright (C) 2016 Samsung Electronics Co., Ltd.
+ *
+ * This program is free software; you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
+ * the Free Software Foundation; either version 2 of the License, or
+ * (at your option) any later version.
+ */
 #ifndef _SCSI_SRPMB_H
 #define _SCSI_SRPMB_H
 
@@ -56,6 +56,7 @@ struct rpmb_irq_ctx {
 	dma_addr_t phy_addr;
 	volatile u8 __iomem *srpmb_pendr;
 	struct work_struct work;
+	struct workqueue_struct *srpmb_queue;
 };
 
 struct rpmb_packet {

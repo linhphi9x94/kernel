@@ -1374,6 +1374,7 @@ static struct platform_driver s2mps16_pmic_driver = {
 	.driver = {
 		.name = "s2mps16-pmic",
 		.owner = THIS_MODULE,
+		.suppress_bind_attrs = true,
 	},
 	.probe = s2mps16_pmic_probe,
 	.remove = s2mps16_pmic_remove,

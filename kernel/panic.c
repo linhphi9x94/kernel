@@ -113,15 +113,22 @@ void panic(const char *fmt, ...)
 	va_start(args, fmt);
 	vsnprintf(buf, sizeof(buf), fmt, args);
 	va_end(args);
-	pr_emerg("Kernel panic - not syncing: %s\n", buf);
+
+#ifdef CONFIG_KFAULT_AUTO_SUMMARY
+	if(buf[strlen(buf)-1] == '\n')
+		buf[strlen(buf)-1] = '\0';
+#endif
+
+	pr_auto(ASL5, "Kernel panic - not syncing: %s\n", buf);
+
 #ifdef CONFIG_RELOCATABLE_KERNEL 
 	{	
 		extern u64 *__boot_kernel_offset; 
 		u64 *kernel_addr = (u64 *) &__boot_kernel_offset;
 		pr_emerg("Kernel loaded at: 0x%llx, offset from compile-time address %llx\n", kernel_addr[1]+kernel_addr[0], kernel_addr[1]- kernel_addr[2] );
 	}
-
 #endif 
+
 	exynos_ss_prepare_panic();
 	exynos_ss_dump_panic(buf, (size_t)strnlen(buf, sizeof(buf)));
 #ifdef CONFIG_DEBUG_BUGVERBOSE

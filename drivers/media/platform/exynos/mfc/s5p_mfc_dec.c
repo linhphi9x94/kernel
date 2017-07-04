@@ -37,7 +37,6 @@
 #define DEF_DST_FMT	0
 
 #define MAX_FRAME_SIZE		(2*1024*1024)
-#define DEC_MAX_FPS		(240000)
 
 /* Find selected format description */
 static struct s5p_mfc_fmt *find_format(struct v4l2_format *f, unsigned int t)
@@ -2286,7 +2285,7 @@ static void s5p_mfc_stop_streaming(struct vb2_queue *q)
 			INIT_LIST_HEAD(&dec->ref_queue);
 			dec->ref_queue_cnt = 0;
 			dec->dynamic_used = 0;
-			dec->err_sync_flag = 0;
+			dec->err_reuse_flag = 0;
 		}
 
 		s5p_mfc_cleanup_queue(&ctx->dst_queue);
@@ -2642,7 +2641,7 @@ int s5p_mfc_init_dec_ctx(struct s5p_mfc_ctx *ctx)
 	dec->immediate_display = 0;
 	dec->is_dts_mode = 0;
 	dec->tiled_buf_cnt = 0;
-	dec->err_sync_flag = 0;
+	dec->err_reuse_flag = 0;
 
 	dec->is_dynamic_dpb = 0;
 	dec->dynamic_used = 0;

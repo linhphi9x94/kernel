@@ -1690,6 +1690,7 @@ static inline void mmc_bus_put(struct mmc_host *host)
 int mmc_resume_bus(struct mmc_host *host)
 {
 	unsigned long flags;
+	int err = 0;
 
 	if (!mmc_bus_needs_resume(host))
 		return -EINVAL;
@@ -1705,14 +1706,14 @@ int mmc_resume_bus(struct mmc_host *host)
 	if (host->bus_ops && !host->bus_dead) {
 		mmc_power_up(host, host->card->ocr);
 		BUG_ON(!host->bus_ops->resume);
-		host->bus_ops->resume(host);
+		err = host->bus_ops->resume(host);
 	}
 
 	mmc_bus_put(host);
 	spin_lock_irqsave(&host->lock, flags);
 	spin_unlock_irqrestore(&host->lock, flags);
 	wake_unlock(&host->detect_wake_lock);
-	printk("%s: Deferred resume completed\n", mmc_hostname(host));
+	printk("%s: Deferred resume completed, err : %d\n", mmc_hostname(host), err);
 	return 0;
 }
 
@@ -2447,12 +2448,12 @@ int _mmc_detect_card_removed(struct mmc_host *host)
 	 */
 	if (!ret && host->ops->get_cd && !host->ops->get_cd(host)) {
 		mmc_detect_change(host, msecs_to_jiffies(200));
-		pr_debug("%s: card removed too slowly\n", mmc_hostname(host));
+		pr_err("%s: card removed too slowly\n", mmc_hostname(host));
 	}
 
 	if (ret) {
 		mmc_card_set_removed(host->card);
-		pr_debug("%s: card remove detected\n", mmc_hostname(host));
+		pr_err("%s: card remove detected, ret : %d\n", mmc_hostname(host), ret);
 		ST_LOG("<%s> %s: card remove detected\n", __func__,mmc_hostname(host));
 	}
 
@@ -2554,7 +2555,6 @@ void mmc_rescan(struct work_struct *work)
 		goto out;
 	}
 
-	ST_LOG("<%s> %s insertion detected",__func__,host->class_dev.kobj.name);
 	mmc_claim_host(host);
 	for (i = 0; i < ARRAY_SIZE(freqs); i++) {
 		if (!mmc_rescan_try_freq(host, max(freqs[i], host->f_min)))
