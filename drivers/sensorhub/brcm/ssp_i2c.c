@@ -751,8 +751,6 @@ void set_proximity_alert_threshold(struct ssp_data *data)
 		__func__, data->uProxAlertHiThresh);
 }
 
-<<<<<<< HEAD
-=======
 int get_proximity_device_id(struct ssp_data *data)
 {
 	int device_id = 0;
@@ -789,7 +787,6 @@ int get_proximity_device_id(struct ssp_data *data)
 	return device_id;
 }
 
->>>>>>> 7916c2a... samsung: DQE7 Kernel
 void set_light_coef(struct ssp_data *data)
 {
 	int iRet = 0;

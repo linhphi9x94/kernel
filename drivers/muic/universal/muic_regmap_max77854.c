@@ -525,21 +525,6 @@ static void max77854_set_switching_mode(struct regmap_desc *pdesc, int mode)
 		_REGMAP_TRACE(pdesc, 'w', ret, attr, value);
 }
 
-<<<<<<< HEAD
-static int max77854_get_vbus_value(struct regmap_desc *pdesc)
-{
-	muic_data_t *muic = pdesc->muic;
-	int vbadc, result = 0;
-	int adcmode, adcen;
-	pr_info("%s\n",__func__);
-
-	adcmode = i2c_smbus_read_byte_data(muic->i2c, REG_CONTROL4);
-	adcen = i2c_smbus_read_byte_data(muic->i2c, REG_HVCONTROL1);
-	i2c_smbus_write_byte_data(muic->i2c, REG_CONTROL4, adcmode & 0x3F);
-	i2c_smbus_write_byte_data(muic->i2c, REG_HVCONTROL1, adcen | 0x20);
-	msleep(100);
-	vbadc = regmap_read_value(pdesc, STATUS3_VbADC);
-=======
 static int max77854_get_vbus_value(struct regmap_desc *pdesc, int type)
 {
 	muic_data_t *muic = pdesc->muic;
@@ -562,7 +547,6 @@ static int max77854_get_vbus_value(struct regmap_desc *pdesc, int type)
 	} else {
 		vbadc = regmap_read_value(pdesc, STATUS3_VbADC);
 	}
->>>>>>> 7916c2a... samsung: DQE7 Kernel
 
 	switch (vbadc) {
 	case 0:
@@ -591,11 +575,6 @@ static int max77854_get_vbus_value(struct regmap_desc *pdesc, int type)
 		break;
 	}
 
-<<<<<<< HEAD
-	i2c_smbus_write_byte_data(muic->i2c, REG_CONTROL4, adcmode);
-	i2c_smbus_write_byte_data(muic->i2c, REG_HVCONTROL1, adcen);
-=======
->>>>>>> 7916c2a... samsung: DQE7 Kernel
 	return result;
 }
 

@@ -346,8 +346,6 @@ void report_pressure_data(struct ssp_data *data, struct sensor_value *predata)
 
 void report_light_data(struct ssp_data *data, struct sensor_value *lightdata)
 {
-<<<<<<< HEAD
-=======
 	if((data->sensor_dump_flag_light==true))
 	{
 		if(data->light_log_cnt!=0)
@@ -365,7 +363,6 @@ void report_light_data(struct ssp_data *data, struct sensor_value *lightdata)
 		}
 	}
 	
->>>>>>> 7916c2a... samsung: DQE7 Kernel
 #ifdef CONFIG_SENSORS_SSP_LIGHT_REPORT_LUX
 	data->buf[LIGHT_SENSOR].lux = lightdata->lux;
 	data->buf[LIGHT_SENSOR].cct = lightdata->cct;

@@ -74,6 +74,7 @@ static int ion_cma_allocate(struct ion_heap *heap, struct ion_buffer *buffer,
 	struct device *dev = cma_heap->dev;
 	struct ion_cma_buffer_info *info;
 	struct page *page;
+	int ret;
 
 	dev_dbg(dev, "Request buffer allocation len %ld\n", len);
 

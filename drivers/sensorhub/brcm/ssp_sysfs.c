@@ -972,8 +972,6 @@ static ssize_t show_sensor_state(struct device *dev,
 	return sprintf(buf, "%s\n", data->sensor_state);
 }
 
-<<<<<<< HEAD
-=======
 static ssize_t show_timestamp_factor(struct device *dev,
 	struct device_attribute *attr, char *buf){
 	struct ssp_data *data = dev_get_drvdata(dev);
@@ -1120,7 +1118,6 @@ static ssize_t sensor_dump_store(struct device *dev,
 	return (ret == SUCCESS)? size : ret;
 }
 
->>>>>>> 7916c2a... samsung: DQE7 Kernel
 static DEVICE_ATTR(mcu_rev, S_IRUGO, mcu_revision_show, NULL);
 static DEVICE_ATTR(mcu_name, S_IRUGO, mcu_model_name_show, NULL);
 static DEVICE_ATTR(mcu_update, S_IRUGO, mcu_update_kernel_bin_show, NULL);
@@ -1196,9 +1193,6 @@ static struct device_attribute dev_attr_step_cnt_poll_delay
 static DEVICE_ATTR(data_injection_enable, S_IRUGO | S_IWUSR | S_IWGRP,
 	show_data_injection_enable, set_data_injection_enable);
 
-<<<<<<< HEAD
-static DEVICE_ATTR(sensor_state, S_IRUGO, show_sensor_state, NULL);
-=======
 static DEVICE_ATTR(timestamp_factor, S_IRUGO | S_IWUSR | S_IWGRP,
 	show_timestamp_factor, set_timestamp_factor);
 
@@ -1211,7 +1205,6 @@ static DEVICE_ATTR(mcu_power, 0664, show_mcu_power, set_mcu_power);
 
 static DEVICE_ATTR(sensor_dump,S_IRUGO | S_IWUSR | S_IWGRP,
 	sensor_dump_show, sensor_dump_store);
->>>>>>> 7916c2a... samsung: DQE7 Kernel
 
 static struct device_attribute *mcu_attrs[] = {
 	&dev_attr_enable,
@@ -1240,12 +1233,9 @@ static struct device_attribute *mcu_attrs[] = {
 	&dev_attr_shake_cam,
 	&dev_attr_data_injection_enable,
 	&dev_attr_sensor_state,
-<<<<<<< HEAD
-=======
 	&dev_attr_timestamp_factor,
 	&dev_attr_ssp_control,
 	&dev_attr_sensor_dump,
->>>>>>> 7916c2a... samsung: DQE7 Kernel
 	NULL,
 };
 
