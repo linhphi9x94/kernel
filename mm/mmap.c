@@ -943,7 +943,7 @@ again:			remove_next = 1 + (end > next->vm_end);
 		else if (next)
 			vma_gap_update(next);
 		else
-			mm->highest_vm_end = end;
+			VM_WARN_ON(mm->highest_vm_end != vm_end_gap(vma));
 	}
 	if (insert && file)
 		uprobe_mmap(insert);

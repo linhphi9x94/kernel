@@ -21,7 +21,6 @@
 #include <linux/bitops.h>
 #include <linux/elf.h>
 #include <linux/gfp.h>
-#include <linux/kasan.h>
 #include <linux/kernel.h>
 #include <linux/mm.h>
 #include <linux/moduleloader.h>
@@ -48,33 +47,16 @@ void *module_alloc(unsigned long size)
 		if (randomize_module_space)
 			module_va += ALIGN( get_random_int() %  RANDOMIZE_MODULE_REGION, PAGE_SIZE * 4); 
 	}
-	void *p;
-
-	__vmalloc_node_range(size, MODULE_ALIGN, module_va, MODULES_END,
-			    GFP_KERNEL, PAGE_KERNEL_EXEC, 0,
-			    NUMA_NO_NODE, __builtin_return_address(0));
-
-	if (p && (kasan_module_alloc(p, size) < 0)) {
-		vfree(p);
-		return NULL;
-	}
-
-	return p;
+	return __vmalloc_node_range(size, 1, module_va, MODULES_END,
+				    GFP_KERNEL, PAGE_KERNEL_EXEC, NUMA_NO_NODE,
+				    __builtin_return_address(0));
 	
 #else
-	void *p;
-
-	p = __vmalloc_node_range(size, MODULE_ALIGN, MODULES_VADDR, MODULES_END,
-				GFP_KERNEL, PAGE_KERNEL_EXEC, 0,
-				NUMA_NO_NODE, __builtin_return_address(0));
-
-	if (p && (kasan_module_alloc(p, size) < 0)) {
-		vfree(p);
-		return NULL;
-	}
-
-	return p;
+	return __vmalloc_node_range(size, 1, MODULES_VADDR, MODULES_END,
+				    GFP_KERNEL, PAGE_KERNEL_EXEC, NUMA_NO_NODE,
+				    __builtin_return_address(0));
 #endif 
+
 }
 
 enum aarch64_reloc_op {

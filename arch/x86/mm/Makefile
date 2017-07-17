@@ -1,6 +1,3 @@
-# Kernel does not boot with instrumentation of tlb.c.
-KCOV_INSTRUMENT_tlb.o	:= n
-
 obj-y	:=  init.o init_$(BITS).o fault.o ioremap.o extable.o pageattr.o mmap.o \
 	    pat.o pgtable.o physaddr.o gup.o setup_nx.o
 
@@ -22,9 +19,6 @@ obj-$(CONFIG_X86_PTDUMP)	+= dump_pagetables.o
 obj-$(CONFIG_HIGHMEM)		+= highmem_32.o
 
 obj-$(CONFIG_KMEMCHECK)		+= kmemcheck/
-
-KASAN_SANITIZE_kasan_init_$(BITS).o := n
-obj-$(CONFIG_KASAN)		+= kasan_init_$(BITS).o
 
 obj-$(CONFIG_MMIOTRACE)		+= mmiotrace.o
 mmiotrace-y			:= kmmio.o pf_in.o mmio-mod.o

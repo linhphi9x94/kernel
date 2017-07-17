@@ -45,14 +45,7 @@
  *	fixed mappings and modules
  */
 #define VMEMMAP_SIZE		ALIGN((1UL << (VA_BITS - PAGE_SHIFT)) * sizeof(struct page), PUD_SIZE)
-
-#ifndef CONFIG_KASAN
-#define VMALLOC_START		(VA_START)
-#else
-#include <asm/kasan.h>
-#define VMALLOC_START		(KASAN_SHADOW_END + SZ_64K)
-#endif
-
+#define VMALLOC_START		(UL(0xffffffffffffffff) << VA_BITS)
 #define VMALLOC_END		(PAGE_OFFSET - PUD_SIZE - VMEMMAP_SIZE - SZ_64K)
 
 #define VMEMMAP_START		(VMALLOC_END + SZ_64K)
@@ -300,11 +293,6 @@ static inline pte_t pmd_pte(pmd_t pmd)
 static inline pmd_t pte_pmd(pte_t pte)
 {
 	return __pmd(pte_val(pte));
-}
-
-static inline pgprot_t mk_sect_prot(pgprot_t prot)
-{
-	return __pgprot(pgprot_val(prot) & ~PTE_TABLE_BIT);
 }
 
 /*

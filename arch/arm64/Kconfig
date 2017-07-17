@@ -36,7 +36,6 @@ config ARM64
 	select HARDIRQS_SW_RESEND
 	select HAVE_ARCH_AUDITSYSCALL
 	select HAVE_ARCH_JUMP_LABEL
-	select HAVE_ARCH_KASAN if SPARSEMEM_VMEMMAP && !(ARM64_16K_PAGES && ARM64_VA_BITS_48)
 	select HAVE_ARCH_KGDB
 	select HAVE_ARCH_MMAP_RND_BITS
 	select HAVE_ARCH_MMAP_RND_COMPAT_BITS if COMPAT
@@ -899,17 +898,6 @@ config BUILD_ARM64_APPENDED_DTB_IMAGE_NAMES
 	help
 	  Space separated list of names of dtbs to append when
 	  building a concatenated Image.gz-dtb.
-
-config DMI
-	bool "Enable support for SMBIOS (DMI) tables"
-	depends on EFI
-	default y
-	help
-	  This enables SMBIOS/DMI feature for systems.
-
-	  This option is only useful on systems that have UEFI firmware.
-	  However, even with this option, the resultant kernel should
-	  continue to boot on existing non-UEFI platforms.
 
 endmenu
 

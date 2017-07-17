@@ -1,0 +1,178 @@
+Copying Files ...
+
+Loading configuration ...
+
+#
+# configuration written to .config
+#
+
+Compiling zImage ...
+
+INFO: CC is /home/xdavn/gcc/bin/aarch64-cortex_a53-linux-gnueabi-gcc
+In file included from scripts/sortextable.c:192:0:
+scripts/sortextable.h: In function ‘do32’:
+scripts/sortextable.h:107:12: warning: variable ‘sort_done_location’ set but not used [-Wunused-but-set-variable]
+  uint32_t *sort_done_location;
+            ^
+In file included from scripts/sortextable.c:194:0:
+scripts/sortextable.h: In function ‘do64’:
+scripts/sortextable.h:107:12: warning: variable ‘sort_done_location’ set but not used [-Wunused-but-set-variable]
+  uint32_t *sort_done_location;
+            ^
+../mm/slub.c: In function 'setup_object':
+../mm/slub.c:1629:2: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  if (unlikely(s->ctor))
+  ^~
+../mm/slub.c:1631:3: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+   kasan_poison_object_data(s, object);
+   ^~~~~~~~~~~~~~~~~~~~~~~~
+../drivers/base/power/opp/core.c:967:13: warning: '_opp_supported_by_regulators' defined but not used [-Wunused-function]
+ static bool _opp_supported_by_regulators(struct dev_pm_opp *opp,
+             ^~~~~~~~~~~~~~~~~~~~~~~~~~~~
+../kernel/sched/fair.c: In function 'move_specific_task':
+../kernel/sched/fair.c:9117:2: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  if (throttled_lb_pair(task_group(p), env->src_rq->cpu,
+  ^~
+../kernel/sched/fair.c:9121:3: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+   if (!hmp_can_migrate_task(p, env))
+   ^~
+../firmware/Makefile:238: target `firmware/cypress/cy8cmbr3145_grace.fw.gen.S' given more than once in the same rule.
+../kernel/trace/trace_output.c: In function 'trace_graph_ret_raw':
+../kernel/trace/trace_output.c:1020:2: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+  if (!trace_seq_printf(&iter->seq, "%lx %lld %lld %ld %d\n",
+  ^~
+../kernel/trace/trace_output.c:1026:3: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+   return TRACE_TYPE_PARTIAL_LINE;
+   ^~~~~~
+../drivers/cpufreq/cpufreq_ondemand.c:40:0: warning: "MIN_FREQUENCY_UP_THRESHOLD" redefined
+ #define MIN_FREQUENCY_UP_THRESHOLD  (11)
+ 
+../drivers/cpufreq/cpufreq_ondemand.c:30:0: note: this is the location of the previous definition
+  #define MIN_FREQUENCY_UP_THRESHOLD (1)
+ 
+../fs/ecryptfs/ecryptfs_dek.c: In function 'ecryptfs_update_crypt_flag':
+../fs/ecryptfs/ecryptfs_dek.c:361:5: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+     if(list_empty(&crypt_stat->keysig_list))
+     ^~
+../fs/ecryptfs/ecryptfs_dek.c:364:2: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+  mutex_lock(&crypt_stat->cs_mutex);
+  ^~~~~~~~~~
+../drivers/input/touchscreen/sec_ts/sec_ts_fn.c: In function 'cmd_store':
+../drivers/input/touchscreen/sec_ts/sec_ts_fn.c:502:4: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+    if (ts->delayed_cmd_param[0] > 1)
+    ^~
+../drivers/input/touchscreen/sec_ts/sec_ts_fn.c:504:5: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+     schedule_delayed_work(&ts->cover_cmd_work, msecs_to_jiffies(10));
+     ^~~~~~~~~~~~~~~~~~~~~
+../drivers/net/wireless/bcmdhd4359/siutils.c: In function 'si_doattach':
+../drivers/net/wireless/bcmdhd4359/siutils.c:541:14: warning: self-comparison always evaluates to false [-Wtautological-compare]
+  if (bustype != BUSTYPE(bustype)) {
+              ^~
+../drivers/sensorhub/brcm/bbdpl/bbd.c: In function 'store_sysfs_lk_timeout':
+../drivers/sensorhub/brcm/bbdpl/bbd.c:784:5: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+     if(bbd.lk.timeout_sec < 10)
+     ^~
+../drivers/sensorhub/brcm/bbdpl/bbd.c:786:2: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+  return status ? : len;
+  ^~~~~~
+../drivers/tty/serial/samsung.c: In function 's3c24xx_serial_bt_log':
+../drivers/tty/serial/samsung.c:1687:9: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+         if (port && port->state->pm_state == UART_PM_STATE_ON)
+         ^~
+../drivers/tty/serial/samsung.c:1689:3: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+   return 0;
+   ^~~~~~
+In file included from ../drivers/usb/gadget/android.c:41:0:
+../drivers/usb/gadget/udc/../function/f_mtp_samsung.c: In function 'mtp_bind_config':
+../drivers/usb/gadget/udc/../function/f_mtp_samsung.c:1773:3: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+   if (status < 0)
+   ^~
+../drivers/usb/gadget/udc/../function/f_mtp_samsung.c:1776:4: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+    strings_dev_mtp[F_MTP_IDX].id = status;
+    ^~~~~~~~~~~~~~~
+In file included from ../drivers/usb/gadget/android.c:52:0:
+../drivers/usb/gadget/udc/../function/u_ether.c: In function 'alloc_tx_buffer':
+../drivers/usb/gadget/udc/../function/u_ether.c:784:3: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+   if (!req->buf)
+   ^~
+../drivers/usb/gadget/udc/../function/u_ether.c:787:4: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+    if (!req->buf)
+    ^~
+In file included from ../drivers/usb/gadget/android.c:150:0:
+../drivers/usb/gadget/udc/../function/f_conn_gadget.c: In function 'conn_gadget_cleanup':
+../drivers/usb/gadget/udc/../function/f_conn_gadget.c:1213:5: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+     if (_conn_gadget_dev->rd_queue_buf)
+     ^~
+../drivers/usb/gadget/udc/../function/f_conn_gadget.c:1216:2: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+  kfree(_conn_gadget_dev);
+  ^~~~~
+../drivers/video/fbdev/exynos/decon_8890/decon_reg_8890.c: In function 'decon_reg_set_int':
+../drivers/video/fbdev/exynos/decon_8890/decon_reg_8890.c:1774:3: warning: this 'if' clause does not guard... [-Wmisleading-indentation]
+   if (psr->psr_mode == DECON_MIPI_COMMAND_MODE)
+   ^~
+../drivers/video/fbdev/exynos/decon_8890/decon_reg_8890.c:1776:4: note: ...this statement, but the latter is misleadingly indented as if it is guarded by the 'if'
+    val |= INTERRUPT_DISPIF_VSTATUS_INT_EN | INTERRUPT_DISPIF_VSTATUS_VSA;
+    ^~~
+  FIPS with KALSR : Generating hmac of crypto and fmp, then update vmlinux... 
+>>>>> Time used for generated all hashes is 10 sec
+
+
+Processing DTS files ...
+
+Processing: exynos8890-hero2lte_eur_open_00.dts
+Generating: exynos8890-hero2lte_eur_open_00.dtb
+Processing: exynos8890-hero2lte_eur_open_01.dts
+Generating: exynos8890-hero2lte_eur_open_01.dtb
+Processing: exynos8890-hero2lte_eur_open_03.dts
+Generating: exynos8890-hero2lte_eur_open_03.dtb
+Processing: exynos8890-hero2lte_eur_open_04.dts
+Generating: exynos8890-hero2lte_eur_open_04.dtb
+Processing: exynos8890-hero2lte_eur_open_08.dts
+Generating: exynos8890-hero2lte_eur_open_08.dtb
+
+Generating dtb.img
+
+=> Found compatible entry: samsung,exynos8890
+    (chip: 8890, hw_rev: 0, hw_rev_end: 0)
+=> Found compatible entry: samsung,exynos8890
+    (chip: 8890, hw_rev: 1, hw_rev_end: 2)
+=> Found compatible entry: samsung,exynos8890
+    (chip: 8890, hw_rev: 3, hw_rev_end: 3)
+=> Found compatible entry: samsung,exynos8890
+    (chip: 8890, hw_rev: 4, hw_rev_end: 7)
+=> Found compatible entry: samsung,exynos8890
+    (chip: 8890, hw_rev: 8, hw_rev_end: 10)
+chmod: cannot access ‘/home/xdavn/Downloads/HydraKernel-TW601-stable/.work/ramdisk/bin/BootSignature.jar’: No such file or directory
+chmod: cannot access ‘/home/xdavn/Downloads/HydraKernel-TW601-stable/.work/ramdisk/bin/avb/*’: No such file or directory
+[H[2J 
+Android Image Kitchen - RepackImg Script
+by osm0sis @ xda-developers
+ 
+Packing ramdisk...
+ 
+Using compression: gzip
+ 
+Getting build information...
+kernel = boot.img-zImage
+cmdline = 
+board = SRPOI30A000KU
+base = 10000000
+pagesize = 2048
+kernel_offset = 00008000
+ramdisk_offset = 01000000
+second_offset = 00f00000
+tags_offset = 00000100
+os_version = 7.0.0
+os_patch_level = 2017-06
+hash = sha1
+dtb = boot.img-dtb
+ 
+Building image...
+ 
+Using format: AOSP
+ 
+Appending footer...
+ 
+Using type: SEAndroid
+ 
+Done!
